@@ -1,0 +1,16 @@
+{
+  "name": "postup",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PostUp — a modern community platform (Hubs, Drops, voting, threaded replies, rich media, moderation).",
+  "license": "MIT",
+  "author": "Yanis (oppressedturtle)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}

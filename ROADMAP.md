@@ -1,0 +1,93 @@
+# PostUp — Roadmap
+
+**Stack:** Next.js (App Router) · TypeScript · Postgres · Prisma · Tailwind · Redis · S3-compatible storage
+**Goal:** Production-grade community platform (Reddit-class): hubs, drops, threaded replies, voting, media, moderation. Portfolio-quality: tested, containerized, CI'd, deploy-ready.
+**Repo visibility:** public — Yanis's portfolio.
+
+## Lexicon (our own branding — use these names everywhere in UI + code domain)
+- **Hub** = community/subreddit, addressed `h/<name>` (e.g. `h/gaming`)
+- **Drop** = a post (text, image, video, or link)
+- **Boost / Bury** = upvote / downvote; **Heat** = net score
+- **Clout** = user reputation (earned from Boosts on your drops/replies)
+- **Warden** = hub moderator · **Overseer** = site-wide admin
+- **The Stream** = personalized home feed · sorts: **Hot · Rising · Fresh · Top**
+- **Stash** = saved drops · **Reply** = comment (threaded)
+
+Each roadmap item is a self-contained increment the coder agent completes in one daily session, then commits + pushes. Check items off in order; skip ahead only if blocked.
+
+## Phase 0 — Foundation
+- [ ] Next.js (App Router) + TypeScript + Tailwind, ESLint/Prettier, base layout + theme (dark/light)
+- [ ] Postgres + Prisma setup, initial schema migration, DB connection, seed script scaffold
+- [ ] Redis connection (caching/feed ranking), env config + validation (zod), structured logging
+- [ ] Docker Compose (app + Postgres + Redis + MinIO for S3-compatible storage), Dockerfile (multi-stage)
+- [ ] Root README with lexicon + features, MIT LICENSE, CI workflow stub
+
+## Phase 1 — Auth & Profiles
+- [ ] Auth (email/password + OAuth GitHub/Google) via Auth.js (NextAuth), httpOnly sessions
+- [ ] User model: handle, avatar, bio, **Clout** counter, joined date
+- [ ] Public profile pages (`u/<handle>`): their drops, replies, Clout, hubs
+- [ ] Account settings, avatar upload, input validation + rate limiting on auth
+
+## Phase 2 — Hubs (Communities)
+- [ ] Hub model (name, slug `h/<name>`, description, rules, icon, banner, NSFW flag, created-by)
+- [ ] Create hub flow (creator becomes owner-**Warden**), hub settings page
+- [ ] Membership (join/leave), member counts, membership-gated actions
+- [ ] Hub page: about sidebar, rules, banner/icon, drop feed scoped to hub
+- [ ] Roles & authorization: member / **Warden** / **Overseer**; per-action permission checks
+
+## Phase 3 — Drops (Posts) & Media
+- [ ] Drop model (type: text|image|video|link, title, body markdown, hub, author, timestamps)
+- [ ] Create drop: rich text/markdown editor with preview
+- [ ] Image upload (to S3/MinIO), client+server validation, thumbnails
+- [ ] Video upload (to S3/MinIO), in-app HTML5 player, size/type limits, poster frame
+- [ ] Link drops with **rich previews** (Open Graph scraping: title, image, description, domain)
+- [ ] Embedded media: YouTube/Vimeo/Twitter via oEmbed — playable/rendered inline in the app
+- [ ] Drop detail page, edit/delete (author), markdown sanitization (XSS-safe)
+
+## Phase 4 — Voting & Ranking
+- [ ] **Boost/Bury** on drops (one vote per user, toggle/switch), **Heat** score, optimistic UI
+- [ ] Ranking algorithms: **Hot** (time-decay), **Rising**, **Fresh** (new), **Top** (by window)
+- [ ] **The Stream**: personalized home feed from joined hubs + Hot fallback, pagination/infinite scroll
+- [ ] **Clout**: award/deduct on author when their drop/reply is Boosted/Buried
+- [ ] Redis-backed vote tallies + cached feed pages for performance
+
+## Phase 5 — Replies (Comments)
+- [ ] Reply model (threaded/nested, parent ref), create/edit/delete
+- [ ] Threaded UI with collapse/expand, "load more replies", continue-thread
+- [ ] **Boost/Bury** on replies, Heat-based sort (Best/Top/New/Controversial)
+- [ ] @mentions in replies + notifications, markdown + sanitization
+
+## Phase 6 — Moderation & Admin
+- [ ] **Warden** tools per hub: remove drop/reply, pin drop, lock thread, ban member from hub
+- [ ] Report system: users report drops/replies → hub mod queue
+- [ ] Mod log (audit trail of mod actions)
+- [ ] **Overseer** (site admin) panel: manage users (ban/suspend), manage hubs, global report queue, takedowns
+- [ ] Spam/rate controls: per-user post/vote rate limits, new-account restrictions
+
+## Phase 7 — Discovery & Polish
+- [ ] Search (drops, hubs, users) — Postgres full-text
+- [ ] Hub discovery/explore page, trending hubs, recommended hubs
+- [ ] **Stash** (save drops), user notifications center, unread counts
+- [ ] Responsive design pass, keyboard nav, loading/empty/error states, toasts, accessibility (ARIA)
+- [ ] SEO: SSR metadata, Open Graph tags for drops/hubs, sitemap
+
+## Phase 8 — Hardening & Tests
+- [ ] Server/API tests (Vitest) for auth, hubs, drops, voting, moderation — >70% on core
+- [ ] Component tests (Testing Library) for key flows
+- [ ] E2E (Playwright): signup → create hub → post drop → boost → reply → moderate
+- [ ] GitHub Actions CI: lint, typecheck, test, build, prisma validate on every push/PR
+- [ ] Seed script with demo hubs/drops/users, OpenAPI/Swagger or documented API routes
+
+## Phase 9 — Deploy-Ready
+- [ ] Production Docker build, env documentation, DB migration strategy
+- [ ] Deploy guide (Vercel/Railway/Fly + managed Postgres + Redis + S3 bucket)
+- [ ] Polished README: screenshots/GIF, feature list, lexicon, architecture diagram, live-demo placeholder
+
+## SECURITY PHASE (after Phase 9, by the security agent)
+Full audit + fixes: dependency CVEs (`npm audit`), authz on every route + mod/admin action, SQL injection (Prisma safe params), XSS (markdown/oEmbed/link-preview sanitization — critical here), SSRF on link-preview/oEmbed fetchers (block internal IPs), file-upload hardening (type/size/content sniffing, no executable serving), JWT/session/secret handling, CORS, helmet/security headers, rate limiting, secrets never committed. Document in `SECURITY.md`.
+
+## QA PHASE (after security)
+Bring full stack up via Docker Compose, run all tests + E2E, manually verify every feature (auth, hubs, all 4 drop types incl. video + embeds + link previews, voting, threaded replies, Warden + Overseer moderation). Log results in `PROGRESS.md`. Proceed to ship only when green.
+
+## SHIP PHASE (after QA green)
+Push final commits/tags to the **public** repo under `oppressedturtle`, verify CI passes, tag `v1.0.0`, notify Yanis for review.
