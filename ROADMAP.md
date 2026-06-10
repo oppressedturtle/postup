@@ -16,7 +16,7 @@
 Each roadmap item is a self-contained increment the coder agent completes in one daily session, then commits + pushes. Check items off in order; skip ahead only if blocked.
 
 ## Phase 0 — Foundation
-- [ ] Next.js (App Router) + TypeScript + Tailwind, ESLint/Prettier, base layout + theme (dark/light)
+- [x] Next.js (App Router) + TypeScript + Tailwind, ESLint/Prettier, base layout + theme (dark/light)
 - [ ] Postgres + Prisma setup, initial schema migration, DB connection, seed script scaffold
 - [ ] Redis connection (caching/feed ranking), env config + validation (zod), structured logging
 - [ ] Docker Compose (app + Postgres + Redis + MinIO for S3-compatible storage), Dockerfile (multi-stage)
