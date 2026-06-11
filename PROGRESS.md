@@ -52,3 +52,61 @@
   locally once `docker compose up -d` has the DB ready.
 - **Roadmap:** Phase 0 — 2/5.
 - **Next:** Phase 0 item 3 — Docker Compose (Postgres, Redis, MinIO), dev environment setup.
+
+## 2026-06-11 — Phase 0: Redis, env validation, structured logging, Docker Compose, Dockerfile
+
+### Installed
+- `zod` (prod) — schema-based environment validation
+- `ioredis` (prod) — Redis client with TypeScript support (ships own types)
+- `pino` + `pino-pretty` (prod) — structured JSON logger with dev pretty-print
+
+### Created / Modified
+- **`src/lib/env.ts`** — Zod-validated env config. Reads `process.env` once at module
+  load; throws a descriptive multi-line error at startup if any required variable is
+  missing or malformed. Covers `DATABASE_URL`, `NEXTAUTH_SECRET` (min 16 chars),
+  `NEXTAUTH_URL`, `REDIS_URL`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`,
+  `S3_BUCKET`, `NODE_ENV`. All app code must import env vars from this module —
+  never from raw `process.env`.
+- **`src/lib/redis.ts`** — ioredis singleton using the `globalThis` pattern (mirrors
+  the Prisma client pattern to survive Next.js hot-reloads). Exports `redis` instance
+  and a `ping()` helper for healthchecks. Redis errors are logged but don't crash the
+  process — callers should degrade gracefully on cache miss.
+- **`src/lib/logger.ts`** — pino logger with `service: "postup"` base binding.
+  Development: pino-pretty (coloured, human-readable, no pid/hostname noise).
+  Production: newline-delimited JSON to stdout. `debug` level in dev, `info` in prod.
+  Supports `.child({ requestId, userId })` for request-scoped context.
+- **`src/lib/db.ts`** — updated to import `DATABASE_URL` and `NODE_ENV` from
+  `src/lib/env.ts` instead of raw `process.env`.
+- **`docker-compose.yml`** — three services on a shared `postup` bridge network:
+  - `postgres:16-alpine` (port 5432, healthcheck: `pg_isready`)
+  - `redis:7-alpine` (port 6379, AOF persistence, healthcheck: `redis-cli ping`)
+  - `minio/minio:latest` (ports 9000 API + 9001 console, healthcheck: curl health endpoint)
+  - `app` service defined but commented out — use `npm run dev` locally in dev.
+  - Named volumes: `postgres_data`, `redis_data`, `minio_data`.
+- **`Dockerfile`** — three-stage production build:
+  1. `deps` — `node:20-alpine`, `npm ci`
+  2. `builder` — generates Prisma Client, runs `next build` (outputs `standalone`)
+  3. `runner` — `node:20-alpine`, non-root `nextjs:nodejs` user, copies only
+     `.next/standalone`, `.next/static`, `public`, `src/generated`, `prisma/schema.prisma`
+- **`.dockerignore`** — excludes `node_modules`, `.next`, `.env`, coverage, logs, `.git`.
+  `prisma/migrations` intentionally kept so the container can run migrations.
+- **`next.config.mjs`** — added `output: "standalone"` for Docker standalone bundle.
+- **`package.json`** — added `docker:up`, `docker:down`, `docker:logs` scripts.
+
+### Key decisions
+- **Zod for env validation** rather than manual checks: single schema definition,
+  typed output, clear per-field error messages — catches misconfiguration at startup.
+- **ioredis over `redis` (node-redis)**: better TypeScript support out of the box,
+  mature ecosystem, native pipeline/cluster/sentinel API; ships its own `.d.ts`.
+- **pino** over winston/morgan: significantly faster (low-overhead JSON serialisation),
+  purpose-built for structured production logging, pino-pretty gives clean dev output
+  with zero config.
+- **`.env.example` as Dockerfile build placeholder**: avoids baking secrets into the
+  image while still satisfying Zod validation during `next build`.
+
+### Verified
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+- **Roadmap:** Phase 0 — 4/5.
+- **Next:** Phase 0 item 5 — Root README polish, CI workflow (GitHub Actions: lint + typecheck + test + build on push/PR).
