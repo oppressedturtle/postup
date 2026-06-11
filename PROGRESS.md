@@ -110,3 +110,20 @@
 
 - **Roadmap:** Phase 0 — 4/5.
 - **Next:** Phase 0 item 5 — Root README polish, CI workflow (GitHub Actions: lint + typecheck + test + build on push/PR).
+
+## 2026-06-11 — Phase 0: README rewrite, GitHub Actions CI workflow
+
+- **README.md** — full portfolio-quality rewrite:
+  - Lexicon table (Hub, Drop, Boost/Bury/Heat, Clout, Warden/Overseer, The Stream, Stash, Reply)
+  - Feature Overview covering all planned platform capabilities
+  - Tech Stack table with version and role for every dependency
+  - Architecture Overview prose (App Router server components, Prisma singleton, Redis caching, S3 media, Zod env validation)
+  - Getting Started walkthrough (prerequisites, clone, `.env`, `docker:up`, install, migrate, seed, dev)
+  - Available Scripts table covering all 15 npm scripts
+  - Project Status linking to ROADMAP.md and PROGRESS.md
+- **`.github/workflows/ci.yml`** — GitHub Actions CI workflow:
+  - Triggers on every `push` and `pull_request` to `main`
+  - Steps: `checkout` → `setup-node@v4` (Node 20, npm cache) → `npm ci` → `prisma generate` → `lint` → `typecheck` → `test` → `build`
+  - Build step passes dummy env vars so Zod validation passes without a live database
+- **Roadmap:** Phase 0 — **5/5 (complete)**.
+- **Next:** Phase 1 — Auth (Auth.js email/password + OAuth GitHub/Google, User model, public profile pages `u/<handle>`, account settings).
