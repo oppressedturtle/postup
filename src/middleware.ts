@@ -12,6 +12,11 @@
  *   /h/[slug]             — public hub page
  *   /api/auth/*           — Auth.js internal routes (sign-in, callbacks, etc.)
  *   /api/auth/register    — registration API endpoint
+ *   /api/hubs (GET)       — hub discovery
+ *   /api/hubs/[slug] (GET)— hub detail
+ *
+ * Note: GET-only public hub API routes are allowed for all HTTP methods at
+ * the middleware level; route handlers enforce auth for mutating methods.
  */
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
@@ -24,6 +29,8 @@ const PUBLIC_PATHS = [
   /^\/u\/[^/]+(\/.*)?$/, // /u/<handle>
   /^\/h\/[^/]+(\/.*)?$/, // /h/<slug>
   /^\/api\/auth(\/.*)?$/, // all /api/auth/* (includes register API)
+  /^\/api\/hubs$/, // GET hub discovery (auth enforced in handler for POST)
+  /^\/api\/hubs\/[^/]+$/, // GET hub detail (auth enforced in handler for PATCH/DELETE)
 ];
 
 function isPublicPath(pathname: string): boolean {

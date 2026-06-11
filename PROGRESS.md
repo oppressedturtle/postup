@@ -271,3 +271,80 @@
 - **Phase 1 — COMPLETE.**
 - **Next:** Phase 2 — Hubs (communities): Hub model, create-hub flow, membership,
   hub page, roles & authorization.
+
+## 2026-06-11 — Phase 2 backend: Hub API routes, membership, Warden/Overseer authorization
+
+### Created / Modified
+
+- **`src/lib/auth-helpers.ts`** — Centralised auth/authorization helpers:
+  - `requireAuth()`: returns `Session["user"]` or 401 NextResponse
+  - `requireOverseer()`: wraps `requireAuth`; returns 403 if not OVERSEER
+  - `requireWarden(hubId)`: wraps `requireAuth`; checks DB for WARDEN membership,
+    returns 403 if not. Returns `Membership` record on success.
+  - All helpers use a discriminated return (`T | NextResponse`) so callers do a
+    single `instanceof NextResponse` check — keeps route handlers clean.
+
+- **`src/app/api/hubs/route.ts`** — Hub collection:
+  - `POST`: Zod validates name (`/^[a-z0-9_]{1,30}$/`), description (≤500), rules
+    (optional, ≤2000), nsfw (bool, default false). Slug = name. Checks slug
+    uniqueness (409 if taken). Creates Hub + WARDEN Membership in a single
+    transaction. Rate-limited: 3 creations/day per user. Returns 201 + hub.
+  - `GET`: Lists hubs with search (`q`), sort (`new` | `popular`), cursor
+    pagination, limit 1–50 (default 20). Includes `_count.memberships`. Results
+    cached in Redis for 60 seconds keyed on full query string.
+
+- **`src/app/api/hubs/[slug]/route.ts`** — Hub detail:
+  - `GET`: Returns hub with `_count.memberships`, `_count.drops`, creator handle.
+    If caller is authenticated also returns their `Membership` record. Redis cache
+    30s per (slug, userId) pair.
+  - `PATCH`: WARDEN or OVERSEER only. Zod validates description, rules, nsfw,
+    icon (URL), banner (URL). Invalidates all cached keys for the hub on update.
+  - `DELETE`: OVERSEER only. Cascade via Prisma `onDelete: Cascade`. Returns 204.
+
+- **`src/app/api/hubs/[slug]/membership/route.ts`** — Hub join/leave:
+  - `POST`: Auth required; 400 if already a member. Creates MEMBER Membership. 201.
+  - `DELETE`: Auth required; 400 if not a member. WARDEN blocked from leaving if
+    they are the sole Warden (returns 400 SOLE_WARDEN). Returns 204.
+
+- **`src/app/api/hubs/[slug]/members/route.ts`** — Member list:
+  - `GET`: Paginated (max 50). Optional `role` filter. Returns handle, avatar,
+    clout, role, joinedAt per member.
+
+- **`src/app/api/hubs/[slug]/wardens/route.ts`** — Warden management:
+  - `POST`: Promote member to WARDEN. OVERSEER or existing WARDEN only. Target
+    must already be a member. 400 if already WARDEN.
+  - `DELETE`: Demote WARDEN to MEMBER. OVERSEER or existing WARDEN only. Cannot
+    demote the hub creator (checks `Hub.createdById`). 400 if not a WARDEN.
+
+- **`src/app/api/hubs/[slug]/icon/route.ts`** — Hub icon upload:
+  - `POST`: WARDEN or OVERSEER only. Accepts jpeg/png/webp, max 2 MB. Saves to
+    `public/hubs/<slug>-icon.<ext>`. Updates `Hub.icon`. Uses `uploadLimiter`.
+    TODO(Phase 3): swap to S3/MinIO.
+
+- **`src/app/api/hubs/[slug]/banner/route.ts`** — Hub banner upload:
+  - `POST`: WARDEN or OVERSEER only. Accepts jpeg/png/webp, max 5 MB. Saves to
+    `public/hubs/<slug>-banner.<ext>`. Updates `Hub.banner`. Uses `uploadLimiter`.
+    TODO(Phase 3): swap to S3/MinIO.
+
+- **`src/middleware.ts`** — Added `/api/hubs` and `/api/hubs/[slug]` to the
+  public allow-list so GET hub discovery and hub detail are accessible without
+  authentication. Mutating methods (POST/PATCH/DELETE) are still protected at the
+  route-handler level.
+
+### Key decisions
+- **`requireWarden` returns the full Membership record** (not just a boolean) so
+  callers can use it for further checks without a second DB query.
+- **Redis cache per (slug, userId)** for hub detail: authenticated callers get
+  their membership inline; anonymous callers share a public cache entry.
+- **Cursor pagination throughout** — avoids `OFFSET` scans on large member/hub
+  lists; the cursor is always the last record's primary key.
+- **Sole-warden guard on leave** prevents hubs from ending up unmoderated.
+- **Creator-demotion guard on warden DELETE** prevents the founding member from
+  losing their guaranteed warden status.
+
+### Verified
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+- **Phase 2 — backend complete, frontend in progress.**
+- **Next:** Phase 2 frontend — hub page `/h/[slug]`, create-hub flow, join/leave button, member list.
