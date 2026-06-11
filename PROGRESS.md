@@ -190,3 +190,84 @@
 - **Phase 1 — backend complete, frontend in progress.**
 - **Roadmap:** Phase 1 backend ✓.
 - **Next:** Phase 1 frontend — `/login`, `/register` pages, `useSession` integration, profile page `u/[handle]`.
+
+## 2026-06-11 — Phase 1 frontend: login/register pages, profile page, account settings, session nav
+
+### Created / Modified
+
+- **`src/components/session-provider.tsx`** — `"use client"` wrapper around
+  `next-auth/react` `SessionProvider`; added to root layout so `useSession` works
+  in all client components without extra boilerplate at each call site.
+
+- **`src/app/layout.tsx`** — wrapped layout children with `<SessionProvider>`.
+
+- **`src/app/(auth)/layout.tsx`** — centered auth shell: full-height flex column,
+  vertically centered card, PostUp logo/wordmark above the card.
+
+- **`src/app/(auth)/login/page.tsx`** — `"use client"` login form:
+  - Email + password fields with inline validation errors
+  - Submits via `signIn("credentials", { email, password, redirectTo: "/" })`
+  - "Continue with GitHub" + "Continue with Google" OAuth buttons
+  - Reads `?error=` from `useSearchParams()` and maps Auth.js error codes to
+    human-readable messages
+  - Loading state on submit button; link to `/register`
+
+- **`src/app/(auth)/register/page.tsx`** — `"use client"` register form:
+  - Email, handle (with `u/` prefix gutter), password, confirm password fields
+  - Client-side validation before submit
+  - POSTs to `/api/auth/register`; maps 409/422/429 API errors to field-level
+    messages; auto-calls `signIn("credentials", …)` on success
+  - Link to `/login`
+
+- **`src/components/user-nav.tsx`** — `"use client"` `UserNav` component:
+  - Uses `useSession` to determine auth state
+  - Unauthenticated: "Log in" + "Sign up" buttons
+  - Authenticated: 32 px avatar circle (image or initials fallback), handle,
+    chevron-gated dropdown with "View profile", "Settings", "Sign out" items
+  - Dropdown: click-outside + Escape-key close; focus returns to trigger on Escape;
+    full ARIA `role="menu"` / `role="menuitem"` semantics
+  - Also exports `Avatar` (used by profile + settings pages)
+
+- **`src/components/site-header.tsx`** — extracted auth-dependent part into
+  `<UserNav />` (client); header itself stays importable as a server component.
+
+- **`src/app/u/[handle]/page.tsx`** — server-component public profile page:
+  - Fetches user by handle via Prisma; `notFound()` on miss
+  - Shows 80 px avatar (image or initials), display name, @handle, bio, clout
+    badge (🔥), joined date (Intl.DateTimeFormat)
+  - "Drops" / "Replies" tab UI — empty states for both (Phase 3/5 will populate)
+  - `generateMetadata` exports name + bio as page title + description
+
+- **`src/app/settings/page.tsx`** — server component: auth-guards via `auth()`;
+  redirects to `/login?callbackUrl=/settings` if no session; loads DB user,
+  renders four sectioned cards:
+  - Profile (display name, bio, read-only handle)
+  - Avatar (current avatar + upload with progress bar)
+  - Password (current → new → confirm)
+  - Danger zone (Delete account — disabled, "Coming soon" tooltip)
+
+- **`src/app/settings/profile-form.tsx`** — `"use client"` form: PATCH
+  `/api/user/profile`; inline success/error feedback; bio char counter.
+
+- **`src/app/settings/avatar-form.tsx`** — `"use client"` form: XHR upload to
+  `/api/user/avatar` with `progress` events → animated progress bar; local
+  `FileReader` preview before upload completes; resets preview on error.
+
+- **`src/app/settings/password-form.tsx`** — `"use client"` form: POST
+  `/api/user/password`; maps `WRONG_PASSWORD` to field-level error.
+
+- **`src/app/api/user/profile/route.ts`** — PATCH: auth guard, Zod validation
+  (`displayName` ≤ 50 chars, `bio` ≤ 300 chars / nullable), DB update, returns
+  updated fields.
+
+- **`src/app/api/user/password/route.ts`** — POST: auth guard, Zod validation
+  (`newPassword` ≥ 8 chars), bcrypt verify current password (403 on mismatch),
+  bcrypt hash (12 rounds) + DB update.
+
+### Verified
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+- **Phase 1 — COMPLETE.**
+- **Next:** Phase 2 — Hubs (communities): Hub model, create-hub flow, membership,
+  hub page, roles & authorization.

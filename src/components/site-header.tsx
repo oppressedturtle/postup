@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { ThemeToggle } from './theme-toggle';
+import { UserNav } from './user-nav';
 
 export function SiteHeader() {
   return (
@@ -19,6 +20,7 @@ export function SiteHeader() {
             The Stream
           </Link>
           <ThemeToggle />
+          <UserNav />
         </nav>
       </div>
     </header>

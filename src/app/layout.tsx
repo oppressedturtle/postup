@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { SiteHeader } from '@/components/site-header';
 import { ThemeProvider, themeNoFlashScript } from '@/components/theme-provider';
+import { SessionProvider } from '@/components/session-provider';
 
 export const metadata: Metadata = {
   title: {
@@ -24,10 +25,12 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeNoFlashScript }} />
       </head>
       <body className="min-h-screen">
-        <ThemeProvider>
-          <SiteHeader />
-          <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
-        </ThemeProvider>
+        <SessionProvider>
+          <ThemeProvider>
+            <SiteHeader />
+            <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+          </ThemeProvider>
+        </SessionProvider>
       </body>
     </html>
   );
