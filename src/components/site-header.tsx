@@ -1,9 +1,13 @@
 import Link from 'next/link';
+import { auth } from '@/lib/auth';
 
 import { ThemeToggle } from './theme-toggle';
 import { UserNav } from './user-nav';
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  const session = await auth();
+  const isAuthed = !!session?.user?.id;
+
   return (
     <header className="border-app bg-card/80 sticky top-0 z-40 border-b backdrop-blur">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4">
@@ -16,9 +20,20 @@ export function SiteHeader() {
           </span>
         </Link>
         <nav className="flex items-center gap-3 text-sm">
-          <Link href="/" className="text-muted hover:text-fg">
+          <Link href="/" className="text-muted hover:text-fg transition-colors">
             The Stream
           </Link>
+          <Link href="/hubs" className="text-muted hover:text-fg transition-colors">
+            Hubs
+          </Link>
+          {isAuthed && (
+            <Link
+              href="/h/create"
+              className="hidden sm:block text-muted hover:text-fg transition-colors"
+            >
+              Create Hub
+            </Link>
+          )}
           <ThemeToggle />
           <UserNav />
         </nav>

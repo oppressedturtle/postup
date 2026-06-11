@@ -1,5 +1,88 @@
 # PostUp — Progress Log
 
+## 2026-06-11 — Phase 2 frontend: Hub page, create-hub flow, hub settings, membership UI, hub discovery
+
+### Created / Modified
+
+- **`src/components/hubs/join-button.tsx`** — `"use client"` `JoinButton` component:
+  - Props: `hubSlug`, `initialIsMember`, `initialMemberCount`, optional `className`
+  - Unauthenticated clicks redirect to `/login` via `useRouter`
+  - POST / DELETE `/api/hubs/[slug]/membership` with optimistic UI update (count + state)
+  - Inline loading spinner during request; rolls back optimistic state on error
+  - Full ARIA: `aria-pressed`, `aria-label`, `disabled` during loading
+
+- **`src/components/hubs/hub-card.tsx`** — Reusable `HubCard` + `HubIcon`:
+  - 40 px icon (image or letter fallback), hub name link, member count, description snippet
+  - NSFW badge, `JoinButton` embedded
+  - `HubIcon` exported separately for use on the hub page
+
+- **`src/app/h/[slug]/page.tsx`** — Hub page (server component):
+  - Fetches hub via Prisma with `_count.memberships/drops`, creator, and up to 5 wardens
+  - `notFound()` on miss; `generateMetadata` with name + description
+  - Full-width 200 px banner (gradient fallback using brand-500/600 if none set)
+  - Hub header: icon overlapping banner with border, name, member/drop counts, NSFW badge,
+    `JoinButton`
+  - Two-column layout (main + sidebar): main shows empty drops state; sidebar has About
+    card (description + rules collapsible), Stats (members, drops, created date), Wardens
+    list (up to 5 with `/u/` links), Create Drop CTA for members
+  - NSFW alert banner shown at the top when `hub.nsfw === true`
+
+- **`src/app/h/create/page.tsx`** — Create Hub page (server component):
+  - Auth guard: redirects to `/login?callbackUrl=/h/create` if unauthenticated
+  - Renders `CreateHubForm` inside a card
+
+- **`src/app/h/create/create-hub-form.tsx`** — `"use client"` `CreateHubForm`:
+  - Fields: name (with `h/` gutter + live preview + regex validation), description (500
+    char counter), rules (optional, 2000 char counter), nsfw toggle
+  - Full client-side validation before submit; POST `/api/hubs`
+  - Maps 409 → "That hub name is taken"; 429 → rate limit message; 422 → field errors
+  - On 201: `router.push(/h/<name>)`
+
+- **`src/app/h/[slug]/settings/page.tsx`** — Hub settings page (server component):
+  - Auth guard + WARDEN/OVERSEER check via Prisma membership lookup
+  - Redirects to `/h/[slug]` if not authorized
+  - Sections: Identity, Icon upload, Banner upload, Warden management, Danger zone
+    (OVERSEER only)
+
+- **`src/app/h/[slug]/settings/identity-form.tsx`** — `"use client"`: description, rules,
+  NSFW toggle. PATCH `/api/hubs/[slug]`. Inline success/error feedback.
+
+- **`src/app/h/[slug]/settings/media-form.tsx`** — `"use client"`: XHR upload with
+  progress bar for icon (max 2 MB) and banner (max 5 MB). Local FileReader preview.
+
+- **`src/app/h/[slug]/settings/warden-form.tsx`** — `"use client"`: lists current wardens
+  with demote buttons (cannot demote creator); promote-by-handle form that POST/DELETE
+  `/api/hubs/[slug]/wardens` and refreshes the list.
+
+- **`src/app/h/[slug]/settings/delete-hub-button.tsx`** — `"use client"`: two-step
+  confirmation inline (no modal dependency); DELETE `/api/hubs/[slug]`; redirects to
+  `/hubs` on success.
+
+- **`src/app/hubs/page.tsx`** — Hub discovery page (server component):
+  - Fetches up to 50 hubs via Prisma with `_count.memberships`
+  - Popular / New sort tabs (URL-driven via `searchParams`)
+  - Create Hub CTA for authenticated users
+  - Grid of `HubCard`s; empty state with CTA
+  - `HubSearch` client component for real-time search
+
+- **`src/app/hubs/hub-search.tsx`** — `"use client"` `HubSearch`:
+  - Debounced (300 ms) fetch to `/api/hubs?q=...&sort=popular`
+  - Shows search results as `HubCard` grid; empty state for no results
+  - Loading spinner, error state
+
+- **`src/components/site-header.tsx`** — Updated to async server component:
+  - Added "Hubs" link → `/hubs`
+  - Added "Create Hub" link (hidden on mobile) — visible only when authenticated
+  - Calls `auth()` server-side to determine visibility
+
+### Verified
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+- **Phase 2 — COMPLETE.**
+- **Next:** Phase 3 — Drops (Posts) & Media: Drop model, create drop (text/image/video/link),
+  rich text editor, media uploads, link previews, OEmbed, Drop detail page.
+
 ## 2026-06-08 — Project kickoff
 - Project created and added to the autonomous build pipeline (builds alongside CollabBoard).
 - Defined full roadmap (10 phases) and the PostUp lexicon (Hubs, Drops, Boost/Bury, Heat, Clout, Wardens, Overseers, The Stream, Stash).
