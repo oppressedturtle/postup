@@ -37,3 +37,12 @@ prisma/*.db
 # Uploads (local dev)
 /uploads
 /tmp
+
+# Generated Prisma client (rebuilt via `prisma generate`)
+/src/generated/
+
+# TypeScript incremental cache
+tsconfig.tsbuildinfo
+
+# Allow .env.example (never ignore it)
+!.env.example

@@ -1,0 +1,255 @@
+// PostUp — Prisma schema
+// Terminology: Hub=community, Drop=post, Reply=comment, Boost/Bury=up/downvote,
+//              Heat=net score, Clout=user reputation, Warden=hub mod, Overseer=site admin
+//
+// This is the Phase 0 foundation schema — all models for the full platform are defined
+// here so later phases only add fields/relations rather than introduce raw new models.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  MEMBER
+  OVERSEER
+}
+
+enum MembershipRole {
+  MEMBER
+  WARDEN
+}
+
+enum DropType {
+  TEXT
+  IMAGE
+  VIDEO
+  LINK
+}
+
+// ---------------------------------------------------------------------------
+// Auth.js / NextAuth models
+// ---------------------------------------------------------------------------
+
+/// OAuth account linked to a User (Auth.js adapter table).
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+/// Server-side session (Auth.js database strategy).
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Email verification token (Auth.js magic-link / email flow).
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// Core domain models
+// ---------------------------------------------------------------------------
+
+/// A registered user of PostUp.
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  /// URL-safe username, e.g. "yanis42"
+  handle        String    @unique
+  /// Null for OAuth-only users who have never set a password.
+  passwordHash  String?   @db.Text
+  displayName   String
+  avatar        String?
+  bio           String?   @db.Text
+  /// Aggregate reputation score (updated by triggers / background job).
+  clout         Int       @default(0)
+  role          Role      @default(MEMBER)
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // --- relations ---
+  accounts    Account[]
+  sessions    Session[]
+  drops       Drop[]
+  replies     Reply[]
+  votes       Vote[]
+  memberships Membership[]
+  savedDrops  Stash[]
+  /// Hubs this user created.
+  authoredHubs Hub[]
+}
+
+/// A community (subreddit-equivalent).
+model Hub {
+  id          String   @id @default(cuid())
+  /// Display name, e.g. "Gaming".
+  name        String   @unique
+  /// URL slug, e.g. "gaming".
+  slug        String   @unique
+  description String   @db.Text
+  icon        String?
+  banner      String?
+  /// Markdown-formatted community rules.
+  rules       String   @default("") @db.Text
+  nsfw        Boolean  @default(false)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // --- relations ---
+  creator     User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  drops       Drop[]
+  memberships Membership[]
+
+  @@index([createdById])
+}
+
+/// Tracks a user's membership in a Hub, and their role within it.
+model Membership {
+  id       String         @id @default(cuid())
+  userId   String
+  hubId    String
+  role     MembershipRole @default(MEMBER)
+  joinedAt DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hub  Hub  @relation(fields: [hubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, hubId])
+  @@index([hubId])
+}
+
+/// A post (text, image, video, or link) submitted to a Hub.
+model Drop {
+  id          String   @id @default(cuid())
+  title       String
+  type        DropType
+  /// Markdown body — used for TEXT drops and link-share descriptions.
+  body        String?  @db.Text
+  imageUrl    String?
+  videoUrl    String?
+  linkUrl     String?
+  /// OG/link-preview metadata stored as JSON.
+  linkPreview Json?
+  hubId       String
+  authorId    String
+  /// Net vote score (denormalised; updated after every Boost/Bury).
+  heat        Int      @default(0)
+  isPinned    Boolean  @default(false)
+  isLocked    Boolean  @default(false)
+  isRemoved   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // --- relations ---
+  hub       Hub     @relation(fields: [hubId], references: [id], onDelete: Cascade)
+  author    User    @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  replies   Reply[]
+  votes     Vote[]
+  stashedBy Stash[]
+
+  @@index([hubId, createdAt(sort: Desc)])
+  @@index([authorId])
+  @@index([heat])
+}
+
+/// A threaded comment on a Drop.
+model Reply {
+  id        String   @id @default(cuid())
+  body      String   @db.Text
+  authorId  String
+  dropId    String
+  /// Null for top-level replies; set to parent reply id for nested replies.
+  parentId  String?
+  /// Net vote score (denormalised).
+  heat      Int      @default(0)
+  isRemoved Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // --- relations ---
+  author   User    @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  drop     Drop    @relation(fields: [dropId], references: [id], onDelete: Cascade)
+  parent   Reply?  @relation("ReplyChildren", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children Reply[] @relation("ReplyChildren")
+  votes    Vote[]
+
+  @@index([dropId, createdAt(sort: Asc)])
+  @@index([authorId])
+  @@index([parentId])
+}
+
+/// A Boost (+1) or Bury (-1) cast by a user on a Drop or Reply.
+/// Exactly one of dropId / replyId must be non-null (enforced at application layer;
+/// the DB unique constraints prevent double-voting on the same target).
+model Vote {
+  id        String   @id @default(cuid())
+  userId    String
+  /// +1 for Boost, -1 for Bury.
+  value     Int
+  dropId    String?
+  replyId   String?
+  createdAt DateTime @default(now())
+
+  // --- relations ---
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  drop  Drop?  @relation(fields: [dropId], references: [id], onDelete: Cascade)
+  reply Reply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  /// One vote per user per Drop.
+  @@unique([userId, dropId])
+  /// One vote per user per Reply.
+  @@unique([userId, replyId])
+  @@index([dropId])
+  @@index([replyId])
+}
+
+/// A saved Drop in a user's Stash.
+model Stash {
+  id      String   @id @default(cuid())
+  userId  String
+  dropId  String
+  savedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  drop Drop @relation(fields: [dropId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dropId])
+  @@index([userId, savedAt(sort: Desc)])
+}

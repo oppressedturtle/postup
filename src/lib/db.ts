@@ -1,0 +1,28 @@
+/**
+ * Prisma client singleton for PostUp.
+ *
+ * Prisma 7 requires an explicit driver adapter — we use @prisma/adapter-pg
+ * backed by the `pg` Pool. A module-level global is used so that Next.js hot
+ * reloads in development don't exhaust the connection pool by spawning a new
+ * PrismaClient on every file change.
+ */
+import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
+
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+
+function createPrismaClient(): PrismaClient {
+  const pool = new Pool({
+    connectionString: process.env["DATABASE_URL"],
+  });
+  const adapter = new PrismaPg(pool);
+  return new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
+}
+
+export const db: PrismaClient =
+  globalForPrisma.prisma ?? createPrismaClient();
+
+if (process.env["NODE_ENV"] !== "production") {
+  globalForPrisma.prisma = db;
+}
