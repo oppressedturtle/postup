@@ -27,6 +27,12 @@ const envSchema = z.object({
   S3_SECRET_KEY: z.string().min(1, "S3_SECRET_KEY is required"),
   S3_BUCKET: z.string().min(1, "S3_BUCKET is required"),
 
+  // ── OAuth providers (optional — app works without these configured) ────────
+  GITHUB_CLIENT_ID: z.string().optional(),
+  GITHUB_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+
   // ── Runtime ────────────────────────────────────────────────────────────────
   NODE_ENV: z
     .enum(["development", "test", "production"])

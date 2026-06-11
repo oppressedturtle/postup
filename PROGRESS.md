@@ -127,3 +127,66 @@
   - Build step passes dummy env vars so Zod validation passes without a live database
 - **Roadmap:** Phase 0 — **5/5 (complete)**.
 - **Next:** Phase 1 — Auth (Auth.js email/password + OAuth GitHub/Google, User model, public profile pages `u/<handle>`, account settings).
+
+## 2026-06-11 — Phase 1 backend: Auth.js v5, rate limiting, register + avatar upload routes, middleware
+
+### Installed
+- `next-auth@beta` (5.0.0-beta.31) — Auth.js v5 for Next.js App Router
+- `@auth/prisma-adapter` — links Auth.js to the Prisma DB (Account, Session, VerificationToken models)
+- `bcryptjs` moved to production deps (was dev-only; needed at runtime for credential auth)
+
+### Created / Modified
+
+- **`src/lib/auth.ts`** — Main Auth.js v5 config:
+  - Adapter: `@auth/prisma-adapter` with the Prisma 7 singleton from `src/lib/db.ts`
+  - Session strategy: `"database"` — server-side sessions with httpOnly cookie, no JWT
+  - Providers: Credentials (email + bcrypt), GitHub + Google conditionally loaded when
+    env vars are present (non-breaking for local dev without OAuth apps configured)
+  - Credentials `authorize`: Zod validates input, looks up user, bcrypt compares hash;
+    logs warn on failure, info on success; never reveals whether email vs password was wrong
+  - `session` callback: enriches session with `handle`, `role`, `clout` from a single DB
+    lookup — client components get full PostUp context from `useSession()`
+  - Exports `{ handlers, auth, signIn, signOut }` + convenience `getSession()` helper
+
+- **`src/app/api/auth/[...nextauth]/route.ts`** — Auth.js route handler (GET + POST)
+
+- **`src/lib/rate-limit.ts`** — Redis sliding-window rate limiter:
+  - Lua script (atomic ZREMRANGEBYSCORE + ZCARD + ZADD + PEXPIRE) — no TOCTOU race
+  - Returns `{ success, remaining, reset }` for Retry-After headers
+  - `authLimiter(ip)`: 10 req / 15 min — for login + register endpoints
+  - `uploadLimiter(userId)`: 5 req / min — for media upload endpoints
+
+- **`src/app/api/auth/register/route.ts`** — POST /api/auth/register:
+  - Zod validation: email format, password ≥ 8 chars, handle `/^[a-zA-Z0-9_]{3,20}$/`
+  - `authLimiter` keyed on `x-forwarded-for` / `x-real-ip`
+  - Parallel uniqueness checks for email + handle
+  - bcrypt hash (12 rounds), User created with `displayName` defaulting to handle
+  - Structured error responses: 400/422/409/429/500
+
+- **`src/app/api/user/avatar/route.ts`** — POST /api/user/avatar:
+  - Auth guard: 401 if no session
+  - `uploadLimiter` keyed on `userId`
+  - Validates MIME type (jpeg/png/gif/webp) and size (≤ 5 MB)
+  - Saves to `public/avatars/<userId>-<timestamp>.<ext>`, updates `User.avatar` in DB
+  - TODO(Phase 3): swap local write for S3/MinIO upload
+
+- **`src/types/next-auth.d.ts`** — Extends `Session.user` with `handle: string`,
+  `role: Role`, `clout: number` so all server components get typed PostUp-specific fields
+
+- **`src/middleware.ts`** — Auth.js middleware:
+  - Public allow-list: `/`, `/login`, `/register`, `/u/[handle]`, `/h/[slug]`, `/api/auth/*`
+  - All other routes redirect unauthenticated requests to `/login?callbackUrl=<url>`
+  - Matcher excludes `_next/static`, `_next/image`, `favicon.ico`, and static assets
+
+- **`src/lib/env.ts`** — Added 4 optional OAuth fields: `GITHUB_CLIENT_ID`,
+  `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+
+- **`.env` + `.env.example`** — Added OAuth placeholder vars
+
+### Verified
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+- **Phase 1 — backend complete, frontend in progress.**
+- **Roadmap:** Phase 1 backend ✓.
+- **Next:** Phase 1 frontend — `/login`, `/register` pages, `useSession` integration, profile page `u/[handle]`.
