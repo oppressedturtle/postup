@@ -20,6 +20,8 @@
  *   /api/votes            — bulk vote state (auth enforced in handler)
  *   /api/stream           — home feed (auth optional; handler degrades gracefully)
  *   /api/users/top        — Clout leaderboard (public)
+ *   /api/drops/[id]/replies (GET) — reply list (auth enforced in handler for POST)
+ *   /api/replies/[id] (GET)       — reply detail (auth enforced in handler for PATCH/DELETE)
  *
  * Note: GET-only public API routes are allowed for all HTTP methods at
  * the middleware level; route handlers enforce auth for mutating methods.
@@ -43,6 +45,8 @@ const PUBLIC_PATHS = [
   /^\/api\/votes$/, // bulk vote state (auth enforced in handler)
   /^\/api\/stream$/, // home feed (auth optional in handler)
   /^\/api\/users\/top$/, // Clout leaderboard (public)
+  /^\/api\/drops\/[^/]+\/replies$/, // GET reply list (auth enforced in handler for POST)
+  /^\/api\/replies\/[^/]+$/, // GET reply detail (auth enforced in handler for PATCH/DELETE)
 ];
 
 function isPublicPath(pathname: string): boolean {

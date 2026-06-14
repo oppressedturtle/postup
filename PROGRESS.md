@@ -1,5 +1,54 @@
 # PostUp — Progress Log
 
+## 2026-06-14 — Phase 5 backend: Reply CRUD, threaded fetch, @mention parsing, notification system
+
+### Created / Modified
+
+- **`prisma/schema.prisma`** — Added `NotificationType` enum (`REPLY_TO_DROP`, `REPLY_TO_REPLY`, `MENTION`, `DROP_BOOSTED`) and `Notification` model (`id`, `userId`, `type`, `read`, `payload: Json`, `createdAt`). Composite index on `(userId, read, createdAt DESC)` for efficient unread queries. Added `notifications Notification[]` relation to User. Ran `prisma generate` to regenerate the client.
+
+- **`src/lib/mentions.ts`** — @mention parser:
+  - `extractMentions(text)`: regex `/\@([a-zA-Z0-9_]{3,20})/g`, deduplicated, capped at 10 handles, returns lowercase.
+  - `linkifyMentions(html)`: post-sanitization pass that replaces `@handle` with `<a href="/u/handle" class="mention">@handle</a>`. Skips handles already inside HTML attributes via negative lookbehind `(?<!=")`.
+
+- **`src/lib/notifications.ts`** — Notification helpers:
+  - `createNotification(userId, type, payload)`: deduplication via `findFirst` within the last 5 minutes on `(userId, type, replyId|dropId)`. Creates `Notification` record then fire-and-forget Redis `PUBLISH notifications:<userId>` for real-time consumers. Failures are logged, never thrown.
+  - `notifyMentions(mentionerUserId, mentionerHandle, handles, payload)`: batch `findMany` to resolve handles → user IDs (case-insensitive), filters out self-mentions at the DB query level, calls `createNotification` per resolved user.
+
+- **`src/app/api/drops/[id]/replies/route.ts`** — Reply collection:
+  - `GET` (public): Zod params `sort` (best|top|new|controversial) + `limit` (1–200, default 100). `best` → `heat DESC, createdAt ASC`; `top` → `heat DESC`; `new` → `createdAt DESC`; `controversial` → raw SQL `ORDER BY ABS(heat) DESC` (Prisma doesn't expose `ABS` in `orderBy`). Enriches controversial results with author + child counts via parallel secondary queries. 30s Redis cache per `(dropId, sort, limit)`.
+  - `POST` (auth + hub membership): Zod `body` (1–10000 chars) + `parentId?`. Validates parentId belongs to this drop. Rate-limited 30/hour per user. Creates reply, extracts mentions → `notifyMentions()`, notifies drop author (`REPLY_TO_DROP`) on top-level, parent reply author (`REPLY_TO_REPLY`) on nested. Notifications dispatched fire-and-forget. Returns 201 + reply with author + `_count.children`.
+
+- **`src/app/api/replies/[id]/route.ts`** — Reply detail:
+  - `GET` (public): reply + author + parent context (body, author). Sanitises `body → "[removed]"` for removed replies in the response. 60s Redis cache.
+  - `PATCH` (author only): validates `body` (1–10000), updates, invalidates cache.
+  - `DELETE` (author / hub WARDEN / OVERSEER): soft-delete — `isRemoved=true`, `body="[removed]"`. Preserves node in the tree for thread integrity. Invalidates reply + drop replies cache.
+
+- **`src/app/api/notifications/route.ts`** — Notifications collection:
+  - `GET` (auth): cursor pagination (default 20, max 50), returns `{ notifications, nextCursor, unreadCount }`. The `unreadCount` is fetched in parallel with the page query.
+  - `PATCH` (auth): marks notifications read by `{ ids: string[] }` or `{ all: true }`. Always scopes update to the requesting user's notifications. Invalidates `notif:unread:<userId>` cache.
+
+- **`src/app/api/notifications/count/route.ts`** — Unread count:
+  - `GET` (auth): returns `{ unread: number }`. 30s Redis cache keyed `notif:unread:<userId>`. Cache is invalidated by `PATCH /api/notifications`.
+
+- **`src/middleware.ts`** — Added to public allow-list:
+  - `/api/drops/[id]/replies` (GET public; POST auth enforced in handler)
+  - `/api/replies/[id]` (GET public; PATCH/DELETE auth enforced in handler)
+
+### Key decisions
+
+- **Flat reply list, client builds tree**: avoids recursive CTEs or multiple round-trips; all replies for a drop are returned flat and the client assembles the tree structure. Practical because reply counts per drop are bounded and the 30s cache amortises the query cost.
+- **ABS(heat) controversial sort via raw SQL**: Prisma v7 `orderBy` doesn't expose expression functions. Raw SQL is localised to a single code path with a secondary enrichment query for author/child-count data, keeping the rest of the handler on the ORM.
+- **Fire-and-forget notification dispatch**: notifications are `Promise.resolve().then(...)` so they never add latency to the reply creation response. Failures are logged but can't cause 500s on the critical write path.
+- **Deduplication window of 5 minutes**: prevents double-notifications when an author edits content that retriggers the same event. The replyId-keyed dedup is precise enough to avoid suppressing legitimate separate notifications.
+- **Soft-delete preserves node**: deleted replies keep their row so child replies remain accessible with proper parent context. The `body` is overwritten with `"[removed]"` both in the DB and in GET responses.
+
+### Verified
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+- **Phase 5 — backend complete, frontend in progress.**
+- **Next:** Phase 5 frontend — Threaded reply UI, reply box, mention linkification, notification bell.
+
 ## 2026-06-14 — Phase 4 backend: Boost/Bury votes, Heat score, hot ranking, The Stream, Clout
 
 ### Created / Modified

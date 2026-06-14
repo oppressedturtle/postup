@@ -23,6 +23,13 @@ enum Role {
   OVERSEER
 }
 
+enum NotificationType {
+  REPLY_TO_DROP
+  REPLY_TO_REPLY
+  MENTION
+  DROP_BOOSTED
+}
+
 enum MembershipRole {
   MEMBER
   WARDEN
@@ -104,15 +111,16 @@ model User {
   updatedAt     DateTime  @updatedAt
 
   // --- relations ---
-  accounts    Account[]
-  sessions    Session[]
-  drops       Drop[]
-  replies     Reply[]
-  votes       Vote[]
-  memberships Membership[]
-  savedDrops  Stash[]
+  accounts      Account[]
+  sessions      Session[]
+  drops         Drop[]
+  replies       Reply[]
+  votes         Vote[]
+  memberships   Membership[]
+  savedDrops    Stash[]
   /// Hubs this user created.
-  authoredHubs Hub[]
+  authoredHubs  Hub[]
+  notifications Notification[]
 }
 
 /// A community (subreddit-equivalent).
@@ -252,4 +260,18 @@ model Stash {
 
   @@unique([userId, dropId])
   @@index([userId, savedAt(sort: Desc)])
+}
+
+/// An in-app notification delivered to a user.
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  read      Boolean          @default(false)
+  payload   Json
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read, createdAt(sort: Desc)])
 }
