@@ -6,6 +6,7 @@ import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { HubIcon } from '@/components/hubs/hub-card';
 import { JoinButton } from '@/components/hubs/join-button';
+import { DropFeed } from '@/components/drops/drop-feed';
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -153,23 +154,7 @@ export default async function HubPage({ params }: Props) {
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
         {/* Main — Drops feed */}
         <section aria-label="Drops feed">
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] py-16 text-center">
-            <span aria-hidden="true" className="text-4xl">
-              📭
-            </span>
-            <p className="font-medium text-[rgb(var(--fg))]">No drops yet.</p>
-            <p className="text-sm text-[rgb(var(--muted))]">
-              Be the first to post!
-            </p>
-            {isMember && (
-              <Link
-                href={`/h/${hub.slug}/submit`}
-                className="mt-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 transition-colors"
-              >
-                Create a Drop
-              </Link>
-            )}
-          </div>
+          <DropFeed hubSlug={hub.slug} />
         </section>
 
         {/* Sidebar */}

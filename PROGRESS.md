@@ -528,3 +528,65 @@
 
 - **Phase 2 — backend complete, frontend in progress.**
 - **Next:** Phase 2 frontend — hub page `/h/[slug]`, create-hub flow, join/leave button, member list.
+
+---
+
+## 2026-06-14 — Phase 3 frontend: Drop cards, feed, create/detail/edit pages, markdown editor, media
+
+### Created / Modified
+
+- **`src/types/drop.ts`** — Shared `Drop`, `DropAuthor`, `DropHub`, `DropCount`, `LinkPreviewData` interfaces matching the API `dropInclude` shape.
+
+- **`src/components/drops/drop-card.tsx`** — Reusable drop card:
+  - Left vote column (Heat score + Boost/Bury arrows — disabled with "Coming in Phase 4" tooltip)
+  - Top bar: hub icon + link · author · relative timestamp
+  - Content preview by type: TEXT (300-char truncation), IMAGE (thumbnail), VIDEO (placeholder + play icon), LINK (preview card with domain/title/description/og:image)
+  - NSFW overlay with click-to-reveal
+  - Footer: reply count, Share (clipboard), Edit (author + TEXT only), Delete (author/OVERSEER)
+
+- **`src/components/drops/drop-feed.tsx`** — Client feed with:
+  - Sort tabs: Hot · Rising · Fresh · Top
+  - Infinite scroll via IntersectionObserver on sentinel div
+  - Loading skeleton (3 placeholder cards), empty state, error state
+
+- **`src/components/drops/delete-drop-button.tsx`** — Client delete button with confirmation + redirect.
+
+- **`src/app/h/[slug]/page.tsx`** — Replaced drop feed placeholder with `<DropFeed hubSlug={hub.slug} />`.
+
+- **`src/app/h/[slug]/submit/page.tsx`** — Server page: requires auth + hub membership, redirects otherwise.
+
+- **`src/app/h/[slug]/submit/create-drop-form.tsx`** — Client form:
+  - Type selector tabs (Text · Image · Video · Link)
+  - Title field with 300-char counter
+  - TEXT: `@uiw/react-md-editor` (dynamic import, SSR disabled), live preview
+  - IMAGE/VIDEO: drag-and-drop upload zone with XHR progress bar → `/api/media/image` / `/api/media/video`
+  - LINK: URL input with blur/paste live preview via `/api/link-preview`
+  - Field errors inline, rate-limit error as toast
+
+- **`src/app/drops/[id]/page.tsx`** — Drop detail server page:
+  - Breadcrumb h/slug → title
+  - Full content by type: TEXT (server-side `renderMarkdown` → `dangerouslySetInnerHTML`), IMAGE (`<Image unoptimized>`), VIDEO (`<video controls>`), LINK (oEmbed if YouTube/Vimeo/Twitter else link preview card)
+  - Edit button (author + TEXT), Delete button (author/WARDEN/OVERSEER)
+  - Replies Phase 5 placeholder
+  - `generateMetadata`: title + 150-char body/preview description
+
+- **`src/app/drops/[id]/edit/page.tsx`** — Server page: requires auth + author, TEXT only.
+
+- **`src/app/drops/[id]/edit/edit-drop-form.tsx`** — Pre-filled title + MDEditor, PATCH `/api/drops/[id]`, redirect on success.
+
+- **`src/app/page.tsx`** — Home page: authenticated users see The Stream (`<DropFeed />`); unauthenticated users see hero + feature grid + Recent Drops feed.
+
+- **`src/components/site-header.tsx`** — Added "+ Create" button (links to `/hubs` with tooltip "Pick a hub to post in").
+
+### Packages added
+
+- `@uiw/react-md-editor` — markdown editor (dynamically imported, SSR disabled)
+- `react-markdown`, `remark-gfm`, `rehype-raw` — client-side markdown rendering
+
+### Verification
+
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+**Phase 3 complete.**
+**Next:** Phase 4 — Voting & Ranking (Boost/Bury on drops + replies, Heat score, Hot/Rising algorithms, The Stream home feed, Clout, Redis vote tallies).

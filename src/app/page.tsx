@@ -1,3 +1,8 @@
+import Link from 'next/link';
+
+import { auth } from '@/lib/auth';
+import { DropFeed } from '@/components/drops/drop-feed';
+
 const FEATURES = [
   {
     name: 'Hubs',
@@ -17,19 +22,56 @@ const FEATURES = [
   },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const session = await auth();
+  const isAuthed = !!session?.user?.id;
+
+  if (isAuthed) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-[rgb(var(--fg))]">The Stream</h1>
+          <Link
+            href="/hubs"
+            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 transition-colors"
+            title="Pick a hub to post in"
+          >
+            + Create Drop
+          </Link>
+        </div>
+        <DropFeed />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-12">
+      {/* Hero */}
       <section className="text-center">
         <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl">
           Where communities <span className="text-brand-500">heat up</span>.
         </h1>
         <p className="text-muted mx-auto mt-4 max-w-xl text-lg">
           PostUp is a place to start Hubs, share Drops, and let the best stuff
-          rise. This is The Stream — your home feed lands here soon.
+          rise. Sign up to join the conversation.
         </p>
+        <div className="mt-6 flex justify-center gap-3">
+          <Link
+            href="/register"
+            className="rounded-lg bg-brand-500 px-6 py-2.5 text-sm font-medium text-white hover:bg-brand-600 transition-colors"
+          >
+            Get started
+          </Link>
+          <Link
+            href="/hubs"
+            className="rounded-lg border border-[rgb(var(--border))] px-6 py-2.5 text-sm font-medium text-[rgb(var(--fg))] hover:bg-[rgb(var(--border))] transition-colors"
+          >
+            Browse Hubs
+          </Link>
+        </div>
       </section>
 
+      {/* Feature grid */}
       <section className="grid gap-4 sm:grid-cols-2">
         {FEATURES.map((f) => (
           <article
@@ -40,6 +82,14 @@ export default function HomePage() {
             <p className="text-muted mt-1 text-sm">{f.blurb}</p>
           </article>
         ))}
+      </section>
+
+      {/* Feed preview */}
+      <section>
+        <h2 className="mb-4 text-lg font-semibold text-[rgb(var(--fg))]">
+          Recent Drops
+        </h2>
+        <DropFeed initialSort="fresh" />
       </section>
     </div>
   );
