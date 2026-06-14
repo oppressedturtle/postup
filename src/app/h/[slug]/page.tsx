@@ -7,6 +7,7 @@ import { auth } from '@/lib/auth';
 import { HubIcon } from '@/components/hubs/hub-card';
 import { JoinButton } from '@/components/hubs/join-button';
 import { DropFeed } from '@/components/drops/drop-feed';
+import { CloutLeaderboard } from '@/components/widgets/clout-leaderboard';
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -259,6 +260,9 @@ export default async function HubPage({ params }: Props) {
               + Create a Drop in h/{hub.slug}
             </Link>
           )}
+
+          {/* Top Contributors leaderboard */}
+          <CloutLeaderboard />
         </aside>
       </div>
     </div>

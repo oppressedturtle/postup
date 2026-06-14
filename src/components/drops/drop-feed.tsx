@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 
 import type { Drop } from '@/types/drop';
 import { DropCard } from './drop-card';
+import { useVoteStates } from '@/hooks/use-vote-states';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,9 +59,11 @@ function DropSkeleton() {
 export interface DropFeedProps {
   hubSlug?: string;
   initialSort?: SortMode;
+  /** Override the API URL used for fetching drops (e.g. "/api/stream"). When set, hubSlug is ignored for URL building. */
+  feedUrl?: string;
 }
 
-export function DropFeed({ hubSlug, initialSort = 'hot' }: DropFeedProps) {
+export function DropFeed({ hubSlug, initialSort = 'hot', feedUrl }: DropFeedProps) {
   const { data: session } = useSession();
   const currentUserId = session?.user?.id ?? null;
 
@@ -77,11 +80,20 @@ export function DropFeed({ hubSlug, initialSort = 'hot' }: DropFeedProps) {
   const sortRef = useRef<SortMode>(sort);
   sortRef.current = sort;
 
+  // Bulk vote hydration — fetches all visible drop vote states in one request
+  const voteStates = useVoteStates(drops.map((d) => d.id));
+
   // ---------------------------------------------------------------------------
   // Fetch helpers
   // ---------------------------------------------------------------------------
 
   function buildUrl(cursor?: string, currentSort?: SortMode): string {
+    if (feedUrl) {
+      const params = new URLSearchParams();
+      if (cursor) params.set('cursor', cursor);
+      const qs = params.toString();
+      return qs ? `${feedUrl}?${qs}` : feedUrl;
+    }
     const params = new URLSearchParams({ sort: currentSort ?? sortRef.current });
     if (hubSlug) params.set('hubSlug', hubSlug);
     if (cursor) params.set('cursor', cursor);
@@ -108,7 +120,7 @@ export function DropFeed({ hubSlug, initialSort = 'hot' }: DropFeedProps) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hubSlug],
+    [hubSlug, feedUrl],
   );
 
   const fetchMore = useCallback(async () => {
@@ -170,29 +182,31 @@ export function DropFeed({ hubSlug, initialSort = 'hot' }: DropFeedProps) {
 
   return (
     <div className="space-y-3">
-      {/* Sort tabs */}
-      <div
-        role="tablist"
-        aria-label="Sort drops by"
-        className="flex gap-1 border-b border-[rgb(var(--border))] pb-0"
-      >
-        {(Object.keys(SORT_LABELS) as SortMode[]).map((s) => (
-          <button
-            key={s}
-            role="tab"
-            type="button"
-            aria-selected={sort === s}
-            onClick={() => setSort(s)}
-            className={
-              sort === s
-                ? 'border-b-2 border-brand-500 px-4 py-2 text-sm font-medium text-brand-500'
-                : 'border-b-2 border-transparent px-4 py-2 text-sm font-medium text-[rgb(var(--muted))] hover:text-[rgb(var(--fg))] transition-colors'
-            }
-          >
-            {SORT_LABELS[s]}
-          </button>
-        ))}
-      </div>
+      {/* Sort tabs — hidden when using a custom feedUrl (the API owns sorting) */}
+      {!feedUrl && (
+        <div
+          role="tablist"
+          aria-label="Sort drops by"
+          className="flex gap-1 border-b border-[rgb(var(--border))] pb-0"
+        >
+          {(Object.keys(SORT_LABELS) as SortMode[]).map((s) => (
+            <button
+              key={s}
+              role="tab"
+              type="button"
+              aria-selected={sort === s}
+              onClick={() => setSort(s)}
+              className={
+                sort === s
+                  ? 'border-b-2 border-brand-500 px-4 py-2 text-sm font-medium text-brand-500'
+                  : 'border-b-2 border-transparent px-4 py-2 text-sm font-medium text-[rgb(var(--muted))] hover:text-[rgb(var(--fg))] transition-colors'
+              }
+            >
+              {SORT_LABELS[s]}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Loading state — initial */}
       {loading && (
@@ -241,6 +255,7 @@ export function DropFeed({ hubSlug, initialSort = 'hot' }: DropFeedProps) {
                 drop={drop}
                 isAuthor={currentUserId === drop.authorId}
                 onDeleted={handleDropDeleted}
+                voteState={voteStates[drop.id]}
               />
             </li>
           ))}

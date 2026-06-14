@@ -20,7 +20,7 @@ export async function SiteHeader() {
           </span>
         </Link>
         <nav className="flex items-center gap-3 text-sm">
-          <Link href="/" className="text-muted hover:text-fg transition-colors">
+          <Link href="/stream" className="text-muted hover:text-fg transition-colors">
             The Stream
           </Link>
           <Link href="/hubs" className="text-muted hover:text-fg transition-colors">

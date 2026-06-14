@@ -669,4 +669,72 @@
 - `npm run lint` ✓ (0 warnings)
 
 **Phase 3 complete.**
+
+---
+
+## 2026-06-14 — Phase 4 frontend: Boost/Bury vote buttons, Heat score, The Stream, Clout leaderboard
+
+### Created
+
+- **`src/components/drops/vote-buttons.tsx`** — `<VoteButtons>` client component:
+  - Props: `dropId`, `initialHeat`, `initialUserVote`, `orientation` (vertical/horizontal).
+  - Optimistic UI: updates heat + active state immediately, reverts on network/API error.
+  - Unauthenticated: redirects to `/login` on click.
+  - Active Boost: arrow turns `brand-500` (orange). Active Bury: arrow turns `indigo-500`.
+  - Loading: disables both buttons, shows spinner on clicked button.
+  - Hydration: if session is authenticated and `initialUserVote` was null (detail page), fetches `GET /api/drops/[id]/vote` on mount. If pre-hydrated via `voteState` prop (feed), skips the fetch.
+  - Heat display: formats large numbers (1234 → "1.2k", 1_000_000 → "1M").
+
+- **`src/hooks/use-vote-states.ts`** — `useVoteStates(dropIds)` bulk hydration hook:
+  - Fetches `/api/votes?dropIds=...` once per unique dropIds list.
+  - Debounced 100 ms so infinite-scroll page loads coalesce requests.
+  - Returns empty map while loading or on 401 (logged-out users).
+  - Merges new pages into existing state with `{ ...prev, ...data }`.
+
+- **`src/components/widgets/clout-leaderboard.tsx`** — `<CloutLeaderboard>` async server component:
+  - Direct Prisma query (top 10 by clout) — no fetch() round-trip.
+  - Shows rank number, avatar (fallback initials), display name, handle, and Clout score with ⚡ icon.
+  - Gold/silver/bronze rank colouring for positions 1–3.
+  - Returns `null` when there are no users yet.
+
+- **`src/app/stream/page.tsx`** — The Stream page (server component):
+  - Authenticated: heading "Your Stream" + `<DropFeed feedUrl="/api/stream" />`.
+  - Unauthenticated: heading "Hot Right Now" + login/register CTA in sidebar.
+  - Two-column layout (feed + sidebar with `<CloutLeaderboard />`).
+  - Sort tabs hidden when `feedUrl` is set (stream API owns its own sort).
+
+### Modified
+
+- **`src/components/drops/drop-card.tsx`**:
+  - Removed placeholder `VoteColumn` — replaced with `<VoteButtons>`.
+  - Added optional `voteState` prop: if provided, passes pre-hydrated heat + userVote to
+    `<VoteButtons>` instead of triggering a per-card fetch.
+
+- **`src/components/drops/drop-feed.tsx`**:
+  - Added `feedUrl?: string` prop — overrides default `/api/drops` URL construction.
+  - Calls `useVoteStates(drops.map(d => d.id))` for bulk hydration; passes `voteState` to each `<DropCard>`.
+  - Sort tabs conditionally hidden when `feedUrl` is provided.
+
+- **`src/app/drops/[id]/page.tsx`**:
+  - Replaced placeholder `VoteColumn` with `<VoteButtons dropId={drop.id} initialHeat={drop.heat} initialUserVote={null} />`.
+  - Client fetches its own vote state on mount — avoids serialising session to the client.
+
+- **`src/app/page.tsx`**:
+  - Authenticated view: two-column layout (feed + `<CloutLeaderboard />` sidebar).
+  - Unauthenticated view: two-column layout added to feed preview section.
+
+- **`src/app/h/[slug]/page.tsx`**:
+  - Added `<CloutLeaderboard />` below the Wardens card in the hub sidebar.
+
+- **`src/components/site-header.tsx`**:
+  - "The Stream" nav link updated to point to `/stream` (was `/`).
+
+### Verification
+
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+**Phase 4 complete.**
+
+**Next:** Phase 5 — Replies (threaded comments): Reply model, create/edit/delete, threaded UI with collapse/expand, Boost/Bury on replies, @mentions, notifications.
 **Next:** Phase 4 — Voting & Ranking (Boost/Bury on drops + replies, Heat score, Hot/Rising algorithms, The Stream home feed, Clout, Redis vote tallies).

@@ -8,6 +8,7 @@ import { useSession } from 'next-auth/react';
 
 import type { Drop, LinkPreviewData } from '@/types/drop';
 import { HubIcon } from '@/components/hubs/hub-card';
+import { VoteButtons } from './vote-buttons';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,43 +37,6 @@ function getDomain(url: string): string {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Vote column (placeholder — wired in Phase 4)
-// ---------------------------------------------------------------------------
-
-function VoteColumn({ heat }: { heat: number }) {
-  return (
-    <div className="flex w-10 shrink-0 flex-col items-center gap-1 pt-1">
-      <button
-        type="button"
-        disabled
-        aria-label="Boost (coming in Phase 4)"
-        title="Boost — coming in Phase 4"
-        className="flex h-7 w-7 items-center justify-center rounded text-[rgb(var(--muted))] opacity-40 cursor-not-allowed"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12 4l8 14H4z" />
-        </svg>
-      </button>
-
-      <span className="text-xs font-semibold text-[rgb(var(--muted))]">
-        {heat}
-      </span>
-
-      <button
-        type="button"
-        disabled
-        aria-label="Bury (coming in Phase 4)"
-        title="Bury — coming in Phase 4"
-        className="flex h-7 w-7 items-center justify-center rounded text-[rgb(var(--muted))] opacity-40 cursor-not-allowed"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12 20L4 6h16z" />
-        </svg>
-      </button>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Content preview renderers
@@ -190,9 +154,11 @@ export interface DropCardProps {
   /** Called after a successful delete so the parent feed can remove the card */
   onDeleted?: (id: string) => void;
   nsfw?: boolean;
+  /** Pre-hydrated vote state from the bulk hook; if omitted VoteButtons self-fetches */
+  voteState?: { userVote: 1 | -1 | null; heat: number };
 }
 
-export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false }: DropCardProps) {
+export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false, voteState }: DropCardProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const [deleting, setDeleting] = useState(false);
@@ -261,7 +227,12 @@ export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false }: Dr
   return (
     <article className="flex gap-3 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-4">
       {/* Vote column */}
-      <VoteColumn heat={drop.heat} />
+      <VoteButtons
+        dropId={drop.id}
+        initialHeat={voteState?.heat ?? drop.heat}
+        initialUserVote={voteState?.userVote ?? null}
+        orientation="vertical"
+      />
 
       {/* Main */}
       <div className="min-w-0 flex-1">

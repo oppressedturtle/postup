@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { auth } from '@/lib/auth';
 import { DropFeed } from '@/components/drops/drop-feed';
+import { CloutLeaderboard } from '@/components/widgets/clout-leaderboard';
 
 const FEATURES = [
   {
@@ -39,7 +40,16 @@ export default async function HomePage() {
             + Create Drop
           </Link>
         </div>
-        <DropFeed />
+
+        {/* Two-column layout for authenticated users */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+          <section aria-label="Stream feed">
+            <DropFeed />
+          </section>
+          <aside className="space-y-4">
+            <CloutLeaderboard />
+          </aside>
+        </div>
       </div>
     );
   }
@@ -84,12 +94,19 @@ export default async function HomePage() {
         ))}
       </section>
 
-      {/* Feed preview */}
+      {/* Feed preview with sidebar */}
       <section>
         <h2 className="mb-4 text-lg font-semibold text-[rgb(var(--fg))]">
           Recent Drops
         </h2>
-        <DropFeed initialSort="fresh" />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+          <div>
+            <DropFeed initialSort="fresh" />
+          </div>
+          <aside className="space-y-4">
+            <CloutLeaderboard />
+          </aside>
+        </div>
       </section>
     </div>
   );

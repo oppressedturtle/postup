@@ -9,6 +9,7 @@ import { renderMarkdown } from '@/lib/markdown';
 import { fetchOEmbed } from '@/lib/oembed';
 import { HubIcon } from '@/components/hubs/hub-card';
 import { DeleteDropButton } from '@/components/drops/delete-drop-button';
+import { VoteButtons } from '@/components/drops/vote-buttons';
 import type { LinkPreviewData } from '@/types/drop';
 
 // ---------------------------------------------------------------------------
@@ -57,40 +58,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       images: drop.imageUrl ? [drop.imageUrl] : undefined,
     },
   };
-}
-
-// ---------------------------------------------------------------------------
-// Vote column (placeholder — Phase 4)
-// ---------------------------------------------------------------------------
-
-function VoteColumn({ heat }: { heat: number }) {
-  return (
-    <div className="flex w-10 shrink-0 flex-col items-center gap-1 pt-1">
-      <button
-        type="button"
-        disabled
-        aria-label="Boost (coming in Phase 4)"
-        title="Boost — coming in Phase 4"
-        className="flex h-8 w-8 items-center justify-center rounded text-[rgb(var(--muted))] opacity-40 cursor-not-allowed"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12 4l8 14H4z" />
-        </svg>
-      </button>
-      <span className="text-sm font-semibold text-[rgb(var(--muted))]">{heat}</span>
-      <button
-        type="button"
-        disabled
-        aria-label="Bury (coming in Phase 4)"
-        title="Bury — coming in Phase 4"
-        className="flex h-8 w-8 items-center justify-center rounded text-[rgb(var(--muted))] opacity-40 cursor-not-allowed"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12 20L4 6h16z" />
-        </svg>
-      </button>
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -202,7 +169,12 @@ export default async function DropDetailPage({ params }: Props) {
       {/* Main card */}
       <article className="flex gap-4 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-6">
         {/* Vote column */}
-        <VoteColumn heat={drop.heat} />
+        <VoteButtons
+          dropId={drop.id}
+          initialHeat={drop.heat}
+          initialUserVote={null}
+          orientation="vertical"
+        />
 
         {/* Content */}
         <div className="min-w-0 flex-1">
