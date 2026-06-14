@@ -1,5 +1,102 @@
 # PostUp — Progress Log
 
+## 2026-06-14 — Phase 3 backend: Drop CRUD, media uploads, link previews, oEmbed, SSRF guard
+
+### Created / Modified
+
+- **`src/lib/storage.ts`** — S3/MinIO client:
+  - `S3Client` with `forcePathStyle: true` (required for MinIO), singleton pattern
+  - `uploadFile(key, buffer, contentType, size)`: uses `@aws-sdk/lib-storage` Upload for
+    multipart support; returns public URL `${S3_ENDPOINT}/${S3_BUCKET}/${key}`
+  - `deleteFile(key)`: `DeleteObjectCommand`, non-existent keys treated as no-op
+  - `getPublicUrl(key)`: constructs URL without network call; strips trailing slash from endpoint
+
+- **`src/lib/markdown.ts`** — Markdown pipeline + HTML sanitizer:
+  - `renderMarkdown(raw)`: remark-parse → remark-rehype → rehype-sanitize (strict allowlist:
+    p, h1–h4, ul, ol, li, blockquote, code, pre, strong, em, a[href], img[src alt], br, hr) →
+    rehype-stringify. Processor created once and shared across calls.
+  - `sanitizeHtml(html)`: DOMPurify pass for raw HTML (oEmbed). Allows only
+    `iframe[src allow allowfullscreen]`, `blockquote`, `a`, `p`, `br`, `strong`, `em`,
+    `code`, `pre`. Strips all event attributes and `data-*` attrs.
+
+- **`src/lib/ssrf-guard.ts`** — SSRF protection:
+  - `assertSafeUrl(url)`: rejects non-http/https schemes; resolves hostname via
+    `dns.promises.lookup` (mitigates DNS rebinding); blocks 127.x, 10.x,
+    172.16–31.x, 192.168.x, ::1, 169.254.x, fc00::/7, fe80::/10
+  - Exports `SsrfError` for typed catch blocks in callers
+
+- **`src/lib/link-preview.ts`** — OG metadata scraper:
+  - `fetchLinkPreview(url)`: SSRF guard → Redis cache check (1 hour, key
+    `linkpreview:<sha256(url)>`) → fetch with 5s timeout + 1 MB response cap (streaming
+    read loop) + `User-Agent: PostUp/1.0` → JSDOM parse → og:title/description/image/
+    site_name with fallback to `<title>` + `<meta name="description">` → cache + return
+  - Returns `{ title, description, imageUrl, domain }` or null; never throws
+
+- **`src/lib/oembed.ts`** — oEmbed fetcher:
+  - `fetchOEmbed(url)`: SSRF guard → provider match (YouTube, Vimeo, Twitter/X via
+    hardcoded regex patterns) → Redis cache check (24 hours, key `oembed:<sha256(url)>`)
+    → fetch oEmbed endpoint with 5s timeout → DOMPurify sanitize returned HTML
+    (iframe/blockquote/a only) → cache + return
+  - oEmbed endpoint URLs are hardcoded — never derived from user input (prevents endpoint
+    injection). Returns `{ html, width, height, thumbnailUrl? }` or null; never throws
+
+- **`src/app/api/drops/route.ts`** — Drop collection:
+  - `POST`: auth required + hub membership check. Zod discriminated union per drop type
+    (TEXT/IMAGE/VIDEO/LINK). LINK drops trigger `fetchLinkPreview` async and store result
+    in `Drop.linkPreview` (JSON field). Rate limited: 10 drops/hour per user. Invalidates
+    `feed:<hub>:*` and `feed:all:*` Redis keys on create. Returns 201 + drop.
+  - `GET`: public feed. Params: `hubSlug?`, `sort` (hot|rising|fresh|top), `limit` (≤50),
+    `cursor`. Sort logic: hot/top → heat DESC + createdAt DESC; fresh → createdAt DESC;
+    rising → heat DESC + createdAt DESC WHERE createdAt > NOW()-24h. Redis cache 30s per
+    (hubSlug, sort, cursor). Returns `{ drops, nextCursor }`.
+
+- **`src/app/api/drops/[id]/route.ts`** — Drop detail:
+  - `GET`: public; drop + author + hub + `_count.replies`. Redis cache 60s.
+  - `PATCH`: author only; TEXT drops only; updates `title` + `body`. Invalidates drop
+    cache + all feed caches.
+  - `DELETE`: author, hub WARDEN, or OVERSEER. Soft-delete: `isRemoved=true`, clears
+    `body`, `imageUrl`, `videoUrl`, `linkUrl`, `linkPreview`. Invalidates caches.
+
+- **`src/app/api/media/image/route.ts`** — Image upload:
+  - Auth required. Rate limited: 20/hour per user.
+  - Validates MIME type (jpeg/png/gif/webp) and size (≤ 20 MB).
+  - sharp pipeline: resize max 2000 px wide (without enlargement), convert to WebP at 85%
+    quality, strip EXIF (sharp default). Key: `media/<userId>/<uuid>.webp`.
+  - Uploads via `uploadFile()`. Returns `{ url }`.
+
+- **`src/app/api/media/video/route.ts`** — Video upload:
+  - Auth required. Rate limited: 5/hour per user.
+  - Validates MIME type (mp4/webm/mov) and size (≤ 500 MB). Direct upload, no transcoding.
+  - Key: `media/<userId>/<uuid>.<ext>`. Returns `{ url, mimeType }`.
+
+- **`src/app/api/link-preview/route.ts`** — Link preview endpoint:
+  - `GET ?url=<url>`: IP-based rate limit (30/min). Calls `fetchLinkPreview(url)`.
+  - Returns preview JSON or 404. Validates URL format before delegating.
+
+- **`src/middleware.ts`** — Added to public allow-list:
+  - `/api/drops` (GET public; POST auth enforced in handler)
+  - `/api/drops/[id]` (GET public; PATCH/DELETE auth enforced in handler)
+  - `/api/link-preview` (rate-limited in handler)
+
+### Key decisions
+- **SSRF guard does DNS resolution** before IP range checks — a public-looking domain that
+  resolves to a private IP is blocked (DNS rebinding protection).
+- **oEmbed endpoints are hardcoded** — user URL is only used to match a provider and as a
+  query parameter; the endpoint URL itself is never derived from user input.
+- **Link preview never throws** — any failure returns null so drop creation is never blocked
+  by a slow or unreachable upstream.
+- **sharp strips EXIF by default** — no need for `.keepMetadata(false)`; the WebP conversion
+  inherently drops all metadata unless `.withMetadata()` is called.
+- **Video uploads are direct** (no server transcoding) — transcoding deferred to Phase 4+
+  background job queue.
+
+### Verified
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+- **Phase 3 — backend complete, frontend in progress.**
+- **Next:** Phase 3 frontend — Drop creation form, feed page, Drop detail page, media upload UI.
+
 ## 2026-06-11 — Phase 2 frontend: Hub page, create-hub flow, hub settings, membership UI, hub discovery
 
 ### Created / Modified

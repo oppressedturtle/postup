@@ -14,8 +14,11 @@
  *   /api/auth/register    — registration API endpoint
  *   /api/hubs (GET)       — hub discovery
  *   /api/hubs/[slug] (GET)— hub detail
+ *   /api/drops (GET)      — drop feed
+ *   /api/drops/[id] (GET) — drop detail
+ *   /api/link-preview     — link preview scraper
  *
- * Note: GET-only public hub API routes are allowed for all HTTP methods at
+ * Note: GET-only public API routes are allowed for all HTTP methods at
  * the middleware level; route handlers enforce auth for mutating methods.
  */
 import { auth } from "@/lib/auth";
@@ -31,6 +34,9 @@ const PUBLIC_PATHS = [
   /^\/api\/auth(\/.*)?$/, // all /api/auth/* (includes register API)
   /^\/api\/hubs$/, // GET hub discovery (auth enforced in handler for POST)
   /^\/api\/hubs\/[^/]+$/, // GET hub detail (auth enforced in handler for PATCH/DELETE)
+  /^\/api\/drops$/, // GET drop feed (auth enforced in handler for POST)
+  /^\/api\/drops\/[^/]+$/, // GET drop detail (auth enforced in handler for PATCH/DELETE)
+  /^\/api\/link-preview$/, // link preview scraper (rate-limited in handler)
 ];
 
 function isPublicPath(pathname: string): boolean {
