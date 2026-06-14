@@ -1,5 +1,85 @@
 # PostUp — Progress Log
 
+## 2026-06-14 — Phase 4 backend: Boost/Bury votes, Heat score, hot ranking, The Stream, Clout
+
+### Created / Modified
+
+- **`src/lib/ranking.ts`** — Pure ranking utility functions (no I/O):
+  - `wilsonScore(ups, downs)`: Wilson score lower bound (95 % CI) for "Best" reply sort
+    (Phase 5). Returns a value in [0, 1]; items with few votes score conservatively low.
+  - `hotScore(heat, createdAt)`: Reddit-style hot score — `log10(|heat|) × sign + age_seconds / 45000`.
+    Uses a PostUp epoch (2026-06-01) as the base so scores stay manageable.
+  - `isRising(heat, createdAt)`: `heat > 0 && age < 24 h` — simple "new + positive momentum"
+    predicate for the Rising feed.
+
+- **`src/app/api/drops/[id]/vote/route.ts`** — Drop vote endpoint:
+  - `GET`: returns `{ userVote: 1|-1|null, heat }` for the caller; 60 s Redis cache per
+    (userId, dropId).
+  - `POST` (auth + rate-limited 60/min): Zod validates `{ value: 1|-1 }`. Atomic Prisma
+    transaction handles three cases — new vote (create), same vote (toggle off/delete),
+    different vote (flip/update). Adjusts `Drop.heat` and author `User.clout` accordingly.
+    Self-votes adjust Heat but never award/deduct Clout. Clout never goes below 0 (clamped
+    inside the transaction). After transaction: updates `vote:drop:<id>` Redis key (SETEX
+    300 s), SCAN-invalidates all `feed:*` cache keys, invalidates per-user vote state cache.
+    Returns `{ heat, userVote }`.
+
+- **`src/app/api/replies/[id]/vote/route.ts`** — Reply vote endpoint (same logic as drop
+  vote but targets `Reply.heat`). Shared rate-limit bucket `vote:<userId>` with drop votes.
+  Returns `{ heat, userVote }`.
+
+- **`src/app/api/votes/route.ts`** — Bulk vote state:
+  - `GET ?dropIds=id1,id2,...` (auth required, max 50 IDs). Parallel Prisma queries for
+    drop heats + user votes. Returns `{ [dropId]: { userVote: 1|-1|null, heat } }`. Missing
+    (removed/non-existent) drops are omitted — callers treat missing keys as null/0.
+
+- **`src/app/api/stream/route.ts`** — The Stream (personalised home feed):
+  - `GET` (auth optional). Authenticated: fetches user's hub memberships, queries drops WHERE
+    `hubId IN (memberHubs)` last 72 h, re-sorts with `hotScore()` in application layer,
+    cursor-paginates. Falls back to global hot feed if user has no memberships. Unauthenticated:
+    top-20 global drops by heat, no pagination. Redis cache 60 s per (userId|"anon", cursor).
+    Returns `{ drops, nextCursor }`.
+
+- **`src/app/api/users/top/route.ts`** — Clout leaderboard:
+  - `GET` (public). Returns top 10 users by `clout` DESC: `{ handle, displayName, avatar, clout }`.
+    Redis cache 5 minutes (key `leaderboard:clout:top10`).
+
+- **`src/app/api/drops/route.ts`** — Feed API updated:
+  - Imports `hotScore`, `isRising` from `src/lib/ranking`.
+  - `hot` sort: DB query restricted to last 72 h, fetches `(limit+1) × 3` rows for wide
+    candidate pool, re-sorts in app layer with `hotScore()` for time decay.
+  - `rising` sort: DB query restricted to last 24 h, wide fetch, then `isRising()` filter
+    + `hotScore()` re-sort in app layer.
+  - `fresh` and `top` sorts unchanged (pure DB ordering, no app-layer re-sort).
+
+- **`src/middleware.ts`** — Added to public allow-list:
+  - `/api/votes` (auth enforced in handler)
+  - `/api/stream` (auth optional in handler)
+  - `/api/users/top` (public)
+
+### Key decisions
+
+- **Application-layer re-sort for hot/rising**: avoids storing a computed score column in
+  Postgres. DB fetches a wider candidate pool (`(limit+1) × 3`) ordered by heat DESC to
+  ensure the true top N by hot score are captured; this is safe because the 72 h window
+  keeps the candidate set small even at scale.
+- **SCAN instead of KEYS for feed invalidation**: `KEYS feed:*` blocks Redis on large
+  keyspaces. `SCAN` with COUNT 100 is non-blocking and safe in production.
+- **Clout clamping inside the transaction**: reading the author's current clout inside the
+  same transaction and using `Math.max(0, clout + delta)` for decrements is safe against
+  concurrent updates because Postgres serialises writes to the same row within a transaction.
+  The increment path uses Prisma's `{ increment }` for atomicity without a read.
+- **Shared rate-limit bucket for drop + reply votes**: both endpoints key on `vote:<userId>`
+  so the 60/min limit is per-user across all vote types, not per resource type.
+- **Unauthenticated stream falls back to global hot**: no redirect or 401 — the endpoint
+  degrades gracefully so the home page works for anonymous visitors.
+
+### Verified
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+- **Phase 4 — backend complete, frontend in progress.**
+- **Next:** Phase 4 frontend — Boost/Bury vote UI, Heat score display, hot feed ranking, Clout leaderboard widget.
+
 ## 2026-06-14 — Phase 3 backend: Drop CRUD, media uploads, link previews, oEmbed, SSRF guard
 
 ### Created / Modified

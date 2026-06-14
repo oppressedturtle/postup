@@ -17,6 +17,9 @@
  *   /api/drops (GET)      — drop feed
  *   /api/drops/[id] (GET) — drop detail
  *   /api/link-preview     — link preview scraper
+ *   /api/votes            — bulk vote state (auth enforced in handler)
+ *   /api/stream           — home feed (auth optional; handler degrades gracefully)
+ *   /api/users/top        — Clout leaderboard (public)
  *
  * Note: GET-only public API routes are allowed for all HTTP methods at
  * the middleware level; route handlers enforce auth for mutating methods.
@@ -37,6 +40,9 @@ const PUBLIC_PATHS = [
   /^\/api\/drops$/, // GET drop feed (auth enforced in handler for POST)
   /^\/api\/drops\/[^/]+$/, // GET drop detail (auth enforced in handler for PATCH/DELETE)
   /^\/api\/link-preview$/, // link preview scraper (rate-limited in handler)
+  /^\/api\/votes$/, // bulk vote state (auth enforced in handler)
+  /^\/api\/stream$/, // home feed (auth optional in handler)
+  /^\/api\/users\/top$/, // Clout leaderboard (public)
 ];
 
 function isPublicPath(pathname: string): boolean {

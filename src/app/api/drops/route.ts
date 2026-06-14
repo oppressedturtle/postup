@@ -36,6 +36,7 @@ import { redis } from "@/lib/redis";
 import { requireAuth } from "@/lib/auth-helpers";
 import { fetchLinkPreview } from "@/lib/link-preview";
 import { rateLimit } from "@/lib/rate-limit";
+import { hotScore, isRising } from "@/lib/ranking";
 import logger from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
@@ -269,14 +270,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       where["hubId"] = hub.id;
     }
 
-    // Rising: only drops from the last 24 hours
+    // hot/rising: restrict DB query to last 72 h / 24 h to keep the candidate set small
+    if (sort === "hot") {
+      where["createdAt"] = { gt: new Date(Date.now() - 72 * 60 * 60 * 1000) };
+    }
     if (sort === "rising") {
-      where["createdAt"] = {
-        gt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      };
+      where["createdAt"] = { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) };
     }
 
-    // Determine orderBy
+    // Determine DB orderBy — application layer re-sorts for hot/rising
     type OrderByInput = { heat: "desc" } | { createdAt: "desc" };
 
     let orderBy: OrderByInput | OrderByInput[];
@@ -287,24 +289,42 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       case "top":
         orderBy = { heat: "desc" };
         break;
-      case "rising":
-        orderBy = [{ heat: "desc" }, { createdAt: "desc" }];
-        break;
       case "hot":
+      case "rising":
       default:
         orderBy = [{ heat: "desc" }, { createdAt: "desc" }];
         break;
     }
 
+    // For hot/rising we fetch a wider pool then re-sort in app layer for time decay
+    const dbLimit = sort === "hot" || sort === "rising" ? (limit + 1) * 3 : limit + 1;
+
     const findArgs: Prisma.DropFindManyArgs = {
       where,
       orderBy,
-      take: limit + 1,
+      take: dbLimit,
       include: dropInclude,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
     };
 
-    const drops = await db.drop.findMany(findArgs);
+    const rawDrops = await db.drop.findMany(findArgs);
+
+    let drops: typeof rawDrops;
+
+    if (sort === "hot") {
+      drops = rawDrops
+        .map((d) => ({ drop: d, score: hotScore(d.heat, d.createdAt) }))
+        .sort((a, b) => b.score - a.score)
+        .map(({ drop }) => drop);
+    } else if (sort === "rising") {
+      drops = rawDrops
+        .filter((d) => isRising(d.heat, d.createdAt))
+        .map((d) => ({ drop: d, score: hotScore(d.heat, d.createdAt) }))
+        .sort((a, b) => b.score - a.score)
+        .map(({ drop }) => drop);
+    } else {
+      drops = rawDrops;
+    }
 
     const hasMore = drops.length > limit;
     const page = hasMore ? drops.slice(0, limit) : drops;
