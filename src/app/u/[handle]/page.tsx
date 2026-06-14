@@ -3,10 +3,19 @@ import type { Metadata } from 'next';
 
 import { db } from '@/lib/db';
 import { Avatar } from '@/components/user-nav';
+import { ProfileTabs } from './profile-tabs';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface Props {
   params: Promise<{ handle: string }>;
 }
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
 
 async function getUser(handle: string) {
   return db.user.findUnique({
@@ -23,6 +32,56 @@ async function getUser(handle: string) {
   });
 }
 
+async function getUserDrops(userId: string) {
+  const drops = await db.drop.findMany({
+    where: { authorId: userId, isRemoved: false },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+    select: {
+      id: true,
+      title: true,
+      type: true,
+      heat: true,
+      createdAt: true,
+      hub: { select: { slug: true, name: true } },
+      _count: { select: { replies: true } },
+    },
+  });
+  return drops.map((d) => ({
+    ...d,
+    createdAt: d.createdAt.toISOString(),
+  }));
+}
+
+async function getUserReplies(userId: string) {
+  const replies = await db.reply.findMany({
+    where: { authorId: userId, isRemoved: false },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+    select: {
+      id: true,
+      body: true,
+      heat: true,
+      createdAt: true,
+      drop: {
+        select: {
+          id: true,
+          title: true,
+          hub: { select: { slug: true, name: true } },
+        },
+      },
+    },
+  });
+  return replies.map((r) => ({
+    ...r,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Metadata
+// ---------------------------------------------------------------------------
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { handle } = await params;
   const user = await getUser(handle);
@@ -37,11 +96,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
 export default async function UserProfilePage({ params }: Props) {
   const { handle } = await params;
   const user = await getUser(handle);
 
   if (!user) notFound();
+
+  const [drops, replies] = await Promise.all([
+    getUserDrops(user.id),
+    getUserReplies(user.id),
+  ]);
 
   const joinedDate = new Intl.DateTimeFormat('en-US', {
     month: 'long',
@@ -85,44 +153,12 @@ export default async function UserProfilePage({ params }: Props) {
       </div>
 
       {/* Tabs */}
-      <div>
-        <div
-          role="tablist"
-          aria-label="Profile sections"
-          className="flex gap-1 border-b border-[rgb(var(--border))]"
-        >
-          <button
-            role="tab"
-            aria-selected="true"
-            type="button"
-            className="border-b-2 border-brand-500 px-4 py-2 text-sm font-medium text-brand-500"
-          >
-            Drops
-          </button>
-          <button
-            role="tab"
-            aria-selected="false"
-            type="button"
-            className="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-[rgb(var(--muted))] hover:text-[rgb(var(--fg))] transition-colors"
-          >
-            Replies
-          </button>
-        </div>
-
-        {/* Drops empty state */}
-        <div
-          role="tabpanel"
-          className="mt-6 flex flex-col items-center gap-2 py-12 text-center"
-        >
-          <span aria-hidden="true" className="text-4xl">
-            📭
-          </span>
-          <p className="font-medium text-[rgb(var(--fg))]">No Drops yet</p>
-          <p className="text-sm text-[rgb(var(--muted))]">
-            {user.displayName} hasn&apos;t posted any Drops yet.
-          </p>
-        </div>
-      </div>
+      <ProfileTabs
+        handle={user.handle}
+        displayName={user.displayName}
+        drops={drops}
+        replies={replies}
+      />
     </div>
   );
 }

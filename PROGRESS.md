@@ -787,3 +787,93 @@
 
 **Next:** Phase 5 — Replies (threaded comments): Reply model, create/edit/delete, threaded UI with collapse/expand, Boost/Bury on replies, @mentions, notifications.
 **Next:** Phase 4 — Voting & Ranking (Boost/Bury on drops + replies, Heat score, Hot/Rising algorithms, The Stream home feed, Clout, Redis vote tallies).
+
+---
+
+## Phase 5 — Frontend: Threaded Replies, Notifications Bell, Profile Tabs (2026-06-14)
+
+### Added
+
+- **`src/types/reply.ts`** — `Reply` interface matching the API `replySelect` shape, with optional
+  client-assembled `children?: Reply[]` for tree rendering.
+
+- **`src/lib/build-reply-tree.ts`** — `buildReplyTree(flat, sort)` utility: takes flat API reply
+  array, builds nested tree via parent→child map, then recursively sorts each level by
+  `best | top | new | controversial`.
+
+- **`src/components/replies/reply-form.tsx`** — `<ReplyForm>` client component:
+  - Textarea with 10 000-char limit and live counter.
+  - POSTs to `/api/drops/[dropId]/replies`.
+  - Inline 429 rate-limit and 403 membership error display.
+  - Submit / Cancel buttons; calls `onSuccess(reply)` on 201.
+
+- **`src/components/replies/reply-card.tsx`** — `<ReplyCard>` client component:
+  - Collapse/expand thread via avatar + vertical gutter line click (Reddit-style).
+  - Collapsed state shows "▶ u/handle (N replies)".
+  - Author avatar, handle link, Clout badge, relative timestamp.
+  - `react-markdown` + `remark-gfm` for body rendering; `a.mention` styled via globals.css.
+  - `<VoteButtons target="reply">` in horizontal orientation.
+  - Reply button → inline `<ReplyForm>` (prepends optimistically to local children).
+  - Delete button for author / OVERSEER.
+  - Recursive `<ReplyCard>` for children; max depth 6, then "Continue thread →" link.
+  - Removed replies show `[removed]` with no vote/reply actions.
+
+- **`src/components/replies/reply-section.tsx`** — `<ReplySection>` client component:
+  - Sort tabs: Best · Top · New · Controversial.
+  - "Add a reply" collapsed by default; expands to `<ReplyForm>` for authenticated users.
+  - Accepts `initialReplies` prop for SSR hydration (skips first client fetch).
+  - Fetches from `/api/drops/[dropId]/replies?sort=<sort>` on sort change.
+  - Builds tree with `buildReplyTree()`.
+  - Optimistic prepend of new top-level replies.
+  - "Load more" button when ≥100 replies loaded.
+  - Loading skeleton, error state with retry, empty state.
+
+- **`src/components/notifications/notifications-bell.tsx`** — `<NotificationsBell>` client component:
+  - Polls `GET /api/notifications/count` every 30 seconds.
+  - Red badge showing unread count (capped at "99+").
+  - Click opens dropdown panel: fetches last 10 notifications.
+  - Type-specific icons and descriptions for REPLY_TO_DROP / REPLY_TO_REPLY / MENTION / DROP_BOOSTED.
+  - Unread notifications have subtle highlight background + unread dot.
+  - "Mark all read" → `PATCH /api/notifications { all: true }`.
+  - Close on click-outside and Escape; focus returns to trigger button.
+
+- **`src/app/u/[handle]/profile-tabs.tsx`** — `<ProfileTabs>` client component:
+  - Drops tab: lists user's 20 most recent drops with hub, heat, reply count, relative time.
+  - Replies tab: lists user's 20 most recent replies with parent drop title, hub, body preview, heat.
+  - Tab count badges; empty states with illustrations.
+
+### Modified
+
+- **`src/components/drops/vote-buttons.tsx`**:
+  - Added `resourceId` prop (primary); deprecated `dropId` kept as backwards-compat alias.
+  - Added `target?: "drop" | "reply"` (default `"drop"`) — routes to the correct vote API.
+  - All aria-labels updated to reflect the resource type.
+
+- **`src/components/drops/drop-card.tsx`**:
+  - `<VoteButtons dropId>` → `<VoteButtons resourceId>`.
+
+- **`src/app/drops/[id]/page.tsx`**:
+  - Added `getInitialReplies(dropId)` — SSR Prisma query for top 100 replies.
+  - Replaced Phase 5 placeholder section with `<ReplySection dropId initialReplies>`.
+  - `<VoteButtons dropId>` → `<VoteButtons resourceId>`.
+  - Removed unused `redirect` import.
+
+- **`src/components/site-header.tsx`**:
+  - Added `<NotificationsBell />` between ThemeToggle and UserNav; rendered only when authenticated.
+
+- **`src/app/u/[handle]/page.tsx`**:
+  - Now server-fetches user drops (20, with hub + heat + reply count) and replies
+    (20, with parent drop title + hub) in parallel.
+  - Passes data to new `<ProfileTabs>` client component.
+
+- **`src/app/globals.css`**:
+  - Added `a.mention { color: brand-500; font-weight: 500; }` in `@layer components`.
+
+### Verification
+
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+**Phase 5 complete.**
+
+**Next:** Phase 6 — Moderation & Admin: Warden tools (remove/pin/lock/ban), report system, mod log, Overseer admin panel, rate controls.

@@ -9,10 +9,18 @@ import { useSession } from 'next-auth/react';
 // ---------------------------------------------------------------------------
 
 export interface VoteButtonsProps {
-  dropId: string;
+  /** The resource ID — a drop ID or reply ID depending on `target`. */
+  resourceId: string;
+  /**
+   * @deprecated Use `resourceId` instead. Kept for backwards compatibility
+   * with existing callers that pass `dropId`.
+   */
+  dropId?: string;
   initialHeat: number;
   initialUserVote: 1 | -1 | null;
   orientation?: 'vertical' | 'horizontal';
+  /** Which resource type to vote on — determines the API endpoint. */
+  target?: 'drop' | 'reply';
 }
 
 // ---------------------------------------------------------------------------
@@ -51,11 +59,17 @@ function Spinner() {
 // ---------------------------------------------------------------------------
 
 export function VoteButtons({
+  resourceId,
   dropId,
   initialHeat,
   initialUserVote,
   orientation = 'vertical',
+  target = 'drop',
 }: VoteButtonsProps) {
+  // Resolve the effective resource ID — prefer explicit resourceId, fall back
+  // to the deprecated dropId prop for backwards compatibility.
+  const id = resourceId ?? dropId ?? '';
+
   const router = useRouter();
   const { data: session, status } = useSession();
 
@@ -68,6 +82,10 @@ export function VoteButtons({
   // don't double-fetch when the prop is explicitly provided.
   const hydratedRef = useRef(initialUserVote !== undefined);
 
+  const voteUrl = target === 'reply'
+    ? `/api/replies/${id}/vote`
+    : `/api/drops/${id}/vote`;
+
   // On mount: if initialUserVote was not pre-hydrated (undefined), fetch
   // current vote state from the API. When initialUserVote is null or 1/-1
   // it's considered pre-hydrated and we skip the fetch.
@@ -79,7 +97,7 @@ export function VoteButtons({
 
     void (async () => {
       try {
-        const res = await fetch(`/api/drops/${dropId}/vote`);
+        const res = await fetch(voteUrl);
         if (!res.ok) return;
         const data = (await res.json()) as { userVote: 1 | -1 | null; heat: number };
         setUserVote(data.userVote);
@@ -88,7 +106,7 @@ export function VoteButtons({
         // Silent — initial optimistic values remain
       }
     })();
-  }, [dropId, status]);
+  }, [voteUrl, status]);
 
   const handleVote = useCallback(
     async (value: 1 | -1) => {
@@ -126,7 +144,7 @@ export function VoteButtons({
       setClickedButton(value);
 
       try {
-        const res = await fetch(`/api/drops/${dropId}/vote`, {
+        const res = await fetch(voteUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ value }),
@@ -151,13 +169,15 @@ export function VoteButtons({
         setClickedButton(null);
       }
     },
-    [dropId, heat, userVote, loading, status, router],
+    [voteUrl, heat, userVote, loading, status, router],
   );
 
   const isVertical = orientation === 'vertical';
 
   const boostActive = userVote === 1;
   const buryActive = userVote === -1;
+
+  const resourceLabel = target === 'reply' ? 'reply' : 'drop';
 
   const boostClass = [
     'flex items-center justify-center rounded transition-colors',
@@ -200,7 +220,7 @@ export function VoteButtons({
         type="button"
         onClick={() => void handleVote(1)}
         disabled={loading}
-        aria-label={boostActive ? 'Remove Boost' : 'Boost this drop'}
+        aria-label={boostActive ? `Remove Boost from this ${resourceLabel}` : `Boost this ${resourceLabel}`}
         aria-pressed={boostActive}
         className={boostClass}
       >
@@ -230,7 +250,7 @@ export function VoteButtons({
         type="button"
         onClick={() => void handleVote(-1)}
         disabled={loading}
-        aria-label={buryActive ? 'Remove Bury' : 'Bury this drop'}
+        aria-label={buryActive ? `Remove Bury from this ${resourceLabel}` : `Bury this ${resourceLabel}`}
         aria-pressed={buryActive}
         className={buryClass}
       >

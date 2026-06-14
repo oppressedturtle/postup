@@ -1,4 +1,4 @@
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import type { Metadata } from 'next';
@@ -10,7 +10,9 @@ import { fetchOEmbed } from '@/lib/oembed';
 import { HubIcon } from '@/components/hubs/hub-card';
 import { DeleteDropButton } from '@/components/drops/delete-drop-button';
 import { VoteButtons } from '@/components/drops/vote-buttons';
+import { ReplySection } from '@/components/replies/reply-section';
 import type { LinkPreviewData } from '@/types/drop';
+import type { Reply } from '@/types/reply';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,6 +35,34 @@ async function getDrop(id: string) {
       _count: { select: { replies: true, votes: true } },
     },
   });
+}
+
+async function getInitialReplies(dropId: string): Promise<Reply[]> {
+  const replies = await db.reply.findMany({
+    where: { dropId },
+    orderBy: [{ heat: 'desc' }, { createdAt: 'asc' }],
+    take: 100,
+    select: {
+      id: true,
+      body: true,
+      isRemoved: true,
+      heat: true,
+      createdAt: true,
+      updatedAt: true,
+      parentId: true,
+      author: {
+        select: { handle: true, avatar: true, clout: true },
+      },
+      _count: { select: { children: true } },
+    },
+  });
+
+  // Serialise dates to ISO strings for client transport
+  return replies.map((r) => ({
+    ...r,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +139,11 @@ export default async function DropDetailPage({ params }: Props) {
   const { id } = await params;
   const [drop, session] = await Promise.all([getDrop(id), auth()]);
 
+
   if (!drop || drop.isRemoved) notFound();
+
+  // Fetch initial replies for SSR (avoids a client waterfall on first load)
+  const initialReplies = await getInitialReplies(id);
 
   const userId = session?.user?.id ?? null;
   const isAuthor = userId === drop.authorId;
@@ -170,7 +204,7 @@ export default async function DropDetailPage({ params }: Props) {
       <article className="flex gap-4 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-6">
         {/* Vote column */}
         <VoteButtons
-          dropId={drop.id}
+          resourceId={drop.id}
           initialHeat={drop.heat}
           initialUserVote={null}
           orientation="vertical"
@@ -285,19 +319,7 @@ export default async function DropDetailPage({ params }: Props) {
         </div>
       </article>
 
-      {/* Replies — Phase 5 placeholder */}
-      <section id="replies" aria-labelledby="replies-heading">
-        <h2 id="replies-heading" className="mb-3 text-base font-semibold text-[rgb(var(--fg))]">
-          Replies
-        </h2>
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] py-12 text-center">
-          <span aria-hidden="true" className="text-3xl">💬</span>
-          <p className="font-medium text-[rgb(var(--fg))]">Replies coming in Phase 5</p>
-          <p className="text-sm text-[rgb(var(--muted))]">
-            Threaded comments, Heat-ranked replies, and reply voting are on the roadmap.
-          </p>
-        </div>
-      </section>
+      <ReplySection dropId={drop.id} initialReplies={initialReplies} />
     </div>
   );
 }

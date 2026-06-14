@@ -228,7 +228,7 @@ export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false, vote
     <article className="flex gap-3 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-4">
       {/* Vote column */}
       <VoteButtons
-        dropId={drop.id}
+        resourceId={drop.id}
         initialHeat={voteState?.heat ?? drop.heat}
         initialUserVote={voteState?.userVote ?? null}
         orientation="vertical"

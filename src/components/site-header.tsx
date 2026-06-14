@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 
 import { ThemeToggle } from './theme-toggle';
 import { UserNav } from './user-nav';
+import { NotificationsBell } from './notifications/notifications-bell';
 
 export async function SiteHeader() {
   const session = await auth();
@@ -49,6 +50,7 @@ export async function SiteHeader() {
             </Link>
           )}
           <ThemeToggle />
+          {isAuthed && <NotificationsBell />}
           <UserNav />
         </nav>
       </div>

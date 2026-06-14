@@ -43,3 +43,15 @@
     border-color: rgb(var(--border));
   }
 }
+
+@layer components {
+  /* @mention links in reply bodies */
+  a.mention {
+    color: rgb(249 86 18); /* brand-500 */
+    font-weight: 500;
+    text-decoration: none;
+  }
+  a.mention:hover {
+    text-decoration: underline;
+  }
+}
