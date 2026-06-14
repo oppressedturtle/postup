@@ -303,6 +303,19 @@ export default async function DropDetailPage({ params }: Props) {
               <span>{drop._count.replies} {drop._count.replies === 1 ? 'reply' : 'replies'}</span>
             </div>
 
+            {drop.isLocked && (
+              <span
+                title="This thread is locked"
+                className="flex items-center gap-1 rounded-md border border-[rgb(var(--border))] px-2 py-1 text-xs text-[rgb(var(--muted))]"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" strokeWidth="2" />
+                </svg>
+                Locked
+              </span>
+            )}
+
             {isAuthor && drop.type === 'TEXT' && (
               <Link
                 href={`/drops/${drop.id}/edit`}
@@ -319,7 +332,7 @@ export default async function DropDetailPage({ params }: Props) {
         </div>
       </article>
 
-      <ReplySection dropId={drop.id} initialReplies={initialReplies} />
+      <ReplySection dropId={drop.id} initialReplies={initialReplies} isLocked={drop.isLocked} />
     </div>
   );
 }

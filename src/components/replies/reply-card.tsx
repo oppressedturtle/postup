@@ -10,6 +10,8 @@ import { useSession } from 'next-auth/react';
 import type { Reply } from '@/types/reply';
 import { VoteButtons } from '@/components/drops/vote-buttons';
 import { ReplyForm } from './reply-form';
+import { ReportButton } from '@/components/moderation/report-button';
+import { ReplyModMenu } from '@/components/moderation/reply-mod-menu';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -146,13 +148,17 @@ export interface ReplyCardProps {
   depth: number;
   /** Called when a new reply is successfully submitted within this subtree */
   onReplyAdded?: (reply: Reply) => void;
+  /** Whether the parent drop is locked (disables new replies) */
+  isLocked?: boolean;
+  /** Hub-level role of the current user */
+  userHubRole?: string;
 }
 
 // ---------------------------------------------------------------------------
 // ReplyCard
 // ---------------------------------------------------------------------------
 
-export function ReplyCard({ reply, dropId, depth, onReplyAdded }: ReplyCardProps) {
+export function ReplyCard({ reply, dropId, depth, onReplyAdded, isLocked = false, userHubRole }: ReplyCardProps) {
   const { data: session } = useSession();
   const [collapsed, setCollapsed] = useState(false);
   const [showReplyForm, setShowReplyForm] = useState(false);
@@ -165,6 +171,7 @@ export function ReplyCard({ reply, dropId, depth, onReplyAdded }: ReplyCardProps
   const userRole = (session?.user as { role?: string } | undefined)?.role;
   const isAuthor = !!userId && userHandle === reply.author.handle;
   const isModerator = userRole === 'OVERSEER';
+  const isModeratorOrWarden = isModerator || userHubRole === 'WARDEN';
 
   const totalDescendants = countDescendants(reply);
 
@@ -275,7 +282,7 @@ export function ReplyCard({ reply, dropId, depth, onReplyAdded }: ReplyCardProps
                 orientation="horizontal"
               />
 
-              {session?.user && (
+              {session?.user && !isLocked && (
                 <button
                   type="button"
                   onClick={() => setShowReplyForm((v) => !v)}
@@ -288,7 +295,17 @@ export function ReplyCard({ reply, dropId, depth, onReplyAdded }: ReplyCardProps
                 </button>
               )}
 
-              {(isAuthor || isModerator) && (
+              <ReportButton replyId={reply.id} />
+
+              <ReplyModMenu
+                replyId={reply.id}
+                isRemoved={isRemoved}
+                userRole={userRole}
+                userHubRole={userHubRole}
+                onUpdate={(removed) => setIsRemoved(removed)}
+              />
+
+              {isAuthor && !isModeratorOrWarden && (
                 <button
                   type="button"
                   onClick={() => void handleDelete()}
@@ -322,6 +339,8 @@ export function ReplyCard({ reply, dropId, depth, onReplyAdded }: ReplyCardProps
               dropId={dropId}
               depth={depth + 1}
               onReplyAdded={onReplyAdded}
+              isLocked={isLocked}
+              userHubRole={userHubRole}
             />
           ))}
 

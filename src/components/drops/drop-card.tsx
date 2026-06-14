@@ -9,6 +9,8 @@ import { useSession } from 'next-auth/react';
 import type { Drop, LinkPreviewData } from '@/types/drop';
 import { HubIcon } from '@/components/hubs/hub-card';
 import { VoteButtons } from './vote-buttons';
+import { ReportButton } from '@/components/moderation/report-button';
+import { DropModMenu } from '@/components/moderation/drop-mod-menu';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -156,13 +158,18 @@ export interface DropCardProps {
   nsfw?: boolean;
   /** Pre-hydrated vote state from the bulk hook; if omitted VoteButtons self-fetches */
   voteState?: { userVote: 1 | -1 | null; heat: number };
+  /** Site-wide role of the current user */
+  userRole?: string;
+  /** Hub-level role of the current user (WARDEN if they moderate this hub) */
+  userHubRole?: string;
 }
 
-export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false, voteState }: DropCardProps) {
+export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false, voteState, userRole, userHubRole }: DropCardProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const effectiveUserRole = userRole ?? (session?.user as { role?: string } | undefined)?.role;
 
   const hubInitial = (drop.hub.name[0] ?? 'H').toUpperCase();
   const dropUrl = `/drops/${drop.id}`;
@@ -222,7 +229,7 @@ export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false, vote
     <NsfwOverlay>{contentNode}</NsfwOverlay>
   ) : contentNode;
 
-  const canDelete = isAuthor || (session?.user as { role?: string } | undefined)?.role === 'OVERSEER';
+  const canDelete = isAuthor || effectiveUserRole === 'OVERSEER';
 
   return (
     <article className="flex gap-3 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-4">
@@ -261,6 +268,18 @@ export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false, vote
             <>
               <span aria-hidden="true">·</span>
               <span className="font-medium text-brand-500">Pinned</span>
+            </>
+          )}
+          {drop.isLocked && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="flex items-center gap-0.5 font-medium text-[rgb(var(--muted))]">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                Locked
+              </span>
             </>
           )}
         </div>
@@ -311,6 +330,14 @@ export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false, vote
               Edit
             </Link>
           )}
+
+          <ReportButton dropId={drop.id} />
+
+          <DropModMenu
+            drop={drop}
+            userRole={effectiveUserRole}
+            userHubRole={userHubRole}
+          />
 
           {canDelete && (
             <button

@@ -956,3 +956,54 @@
 **Phase 5 complete.**
 
 **Next:** Phase 6 — Moderation & Admin: Warden tools (remove/pin/lock/ban), report system, mod log, Overseer admin panel, rate controls.
+
+## 2026-06-14 — Phase 6 frontend: Report system, mod queue, Warden tools, Overseer admin panel
+
+### Created
+
+- **`src/components/moderation/report-button.tsx`** — Client component with flag icon button. Opens a modal dialog (focus-trapped, Escape closes, ARIA role="dialog") with radio selection for 6 report reasons, optional 500-char details textarea. Unauthenticated users are redirected to /login. 201 success shows "Thanks, we'll review this"; 409 shows "You've already reported this". Submits to `POST /api/reports`.
+
+- **`src/components/moderation/drop-mod-menu.tsx`** — Warden/Overseer-only gear dropdown on DropCard. Pin/Unpin, Lock/Unlock, Remove/Restore actions each POST to `/api/drops/[id]/moderate`. Remove requires confirm dialog. Optimistic UI updates with revert on error.
+
+- **`src/components/moderation/reply-mod-menu.tsx`** — Warden/Overseer-only Mod Remove/Restore button on ReplyCard. POSTs to `/api/replies/[id]/moderate`. Optimistic state with revert on failure.
+
+- **`src/app/h/[slug]/mod/page.tsx`** — Server component. Auth-guards: WARDEN or OVERSEER only, else redirect to hub. Tabbed layout (Reports | Banned Users | Mod Log) driven by `?tab=` query param. Shows pending report count badge on Reports tab.
+
+- **`src/app/h/[slug]/mod/reports-tab.tsx`** — Fetches `GET /api/reports?hubSlug=…`. Each card shows reason badge, truncated content, details, reporter, relative time. "Remove & Resolve" and "Dismiss" buttons call `PATCH /api/reports/[id]` and optimistically remove the item.
+
+- **`src/app/h/[slug]/mod/bans-tab.tsx`** — Ban form at top (handle + reason → `POST /api/hubs/[slug]/bans`). Banned users list with unban button per row (`DELETE /api/hubs/[slug]/bans`).
+
+- **`src/app/h/[slug]/mod/mod-log-tab.tsx`** — Table of mod log entries with human-readable action labels, moderator handle, target link, reason, relative time. Infinite scroll via "Load more" cursor pagination.
+
+- **`src/app/admin/layout.tsx`** — OVERSEER gate (redirects to `/` otherwise). Dark sidebar nav with links to Dashboard, Users, Hubs, Reports.
+
+- **`src/app/admin/page.tsx`** — Dashboard with 4 stat cards: total users, total hubs, total active drops, pending reports. Fetched server-side via Prisma.
+
+- **`src/app/admin/users/page.tsx`** — Client component. Debounced (300ms) search hitting `GET /api/admin/users?q=…`. Table with avatar, handle, email, role badge, clout, join date, suspended badge. Per-row "Make/Remove Overseer" and "Suspend/Unsuspend" with confirm dialogs. PATCHes `/api/admin/users/[handle]`.
+
+- **`src/app/admin/hubs/page.tsx`** — Client component. Table of all hubs with member/drop counts, NSFW badge, created date. "Delete Hub" per row opens type-to-confirm modal (must type hub slug). DELETEs `/api/admin/hubs/[slug]`.
+
+- **`src/app/admin/reports/page.tsx`** — All pending reports site-wide. Fetches `GET /api/admin/reports`. Same resolve/dismiss actions as hub mod queue. Load-more pagination.
+
+### Modified
+
+- **`src/components/drops/drop-card.tsx`** — Added `userRole` and `userHubRole` props. Imports and renders `<ReportButton dropId={drop.id} />` and `<DropModMenu>` (gear icon, visible to wardens/overseers only). Added 🔒 Locked badge in meta bar when `drop.isLocked`.
+
+- **`src/components/replies/reply-card.tsx`** — Added `isLocked` and `userHubRole` props (propagated to child ReplyCards). Reply button hidden when locked. Added `<ReportButton replyId={reply.id} />` and `<ReplyModMenu>`. Regular Delete button hidden for users who have the mod menu.
+
+- **`src/components/replies/reply-section.tsx`** — Added `isLocked` prop. When locked, replaces the reply form with a locked notice. Passes `isLocked` to each `<ReplyCard>`.
+
+- **`src/app/drops/[id]/page.tsx`** — Passes `isLocked={drop.isLocked}` to `<ReplySection>`. Added Locked badge in action bar.
+
+- **`src/app/h/[slug]/page.tsx`** — Fetches warden status + pending report count. Shows "Mod Queue" link in sidebar for wardens/overseers with a report count badge.
+
+- **`src/components/user-nav.tsx`** — Adds "Admin Panel" link to dropdown menu for OVERSEER users.
+
+### Verification
+
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+**Phase 6 complete.**
+
+**Next:** Phase 7 — Discovery & Polish: search (drops/hubs/users), hub explore page, Stash (save drops), notifications center, responsive design, accessibility, SEO metadata.

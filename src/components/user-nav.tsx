@@ -68,6 +68,7 @@ export function UserNav() {
   const initials = (user.name ?? user.handle ?? 'U')
     .slice(0, 2)
     .toUpperCase();
+  const isOverseer = (user as { role?: string }).role === 'OVERSEER';
 
   return (
     <div className="relative">
@@ -118,6 +119,17 @@ export function UserNav() {
           >
             Settings
           </Link>
+
+          {isOverseer && (
+            <Link
+              href="/admin"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-brand-500 hover:bg-brand-500/10 transition-colors"
+            >
+              Admin Panel
+            </Link>
+          )}
 
           <div className="border-t border-[rgb(var(--border))] mt-1 pt-1">
             <button

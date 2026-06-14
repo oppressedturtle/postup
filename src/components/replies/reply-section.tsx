@@ -16,6 +16,8 @@ export interface ReplySectionProps {
   dropId: string;
   /** SSR-fetched flat reply list to avoid a client fetch on first load */
   initialReplies?: Reply[];
+  /** Whether the drop is locked by a moderator (disables new replies) */
+  isLocked?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -35,7 +37,7 @@ const SORT_TABS: { label: string; value: ReplySort }[] = [
 
 const PAGE_SIZE = 100;
 
-export function ReplySection({ dropId, initialReplies }: ReplySectionProps) {
+export function ReplySection({ dropId, initialReplies, isLocked = false }: ReplySectionProps) {
   const { data: session } = useSession();
 
   const [sort, setSort] = useState<ReplySort>('best');
@@ -134,26 +136,33 @@ export function ReplySection({ dropId, initialReplies }: ReplySectionProps) {
         </div>
       </div>
 
-      {/* Top-level reply form */}
-      {session?.user && (
-        <div className="mb-4">
-          {showReplyForm ? (
-            <ReplyForm
-              dropId={dropId}
-              onSuccess={handleNewReply}
-              onCancel={() => setShowReplyForm(false)}
-              placeholder="What do you think?"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowReplyForm(true)}
-              className="w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--card))] px-4 py-3 text-left text-sm text-[rgb(var(--muted))] hover:border-brand-500/50 hover:text-[rgb(var(--fg))] transition-colors"
-            >
-              Add a reply…
-            </button>
-          )}
+      {/* Locked notice or top-level reply form */}
+      {isLocked ? (
+        <div className="mb-4 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--card))] px-4 py-3 text-sm text-[rgb(var(--muted))]">
+          <span className="mr-1">🔒</span>
+          This thread is locked by a moderator.
         </div>
+      ) : (
+        session?.user && (
+          <div className="mb-4">
+            {showReplyForm ? (
+              <ReplyForm
+                dropId={dropId}
+                onSuccess={handleNewReply}
+                onCancel={() => setShowReplyForm(false)}
+                placeholder="What do you think?"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowReplyForm(true)}
+                className="w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--card))] px-4 py-3 text-left text-sm text-[rgb(var(--muted))] hover:border-brand-500/50 hover:text-[rgb(var(--fg))] transition-colors"
+              >
+                Add a reply…
+              </button>
+            )}
+          </div>
+        )
       )}
 
       {/* Body */}
@@ -192,6 +201,7 @@ export function ReplySection({ dropId, initialReplies }: ReplySectionProps) {
               reply={reply}
               dropId={dropId}
               depth={0}
+              isLocked={isLocked}
             />
           ))}
         </div>
