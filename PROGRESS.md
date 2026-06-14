@@ -1,5 +1,80 @@
 # PostUp — Progress Log
 
+## 2026-06-14 — Phase 7 backend: Full-text search, Stash, trending/recommended hubs, sitemap, OG images
+
+### Created / Modified
+
+- **`src/app/api/search/route.ts`** — `GET /api/search`:
+  - Params: `q` (min 2 chars), `type` (drops|hubs|users|all, default all), `limit` (1–25, default 10), `cursor`.
+  - Postgres full-text search via `db.$queryRaw` with `to_tsvector / plainto_tsquery('english', ...)` for drops + hubs; `'simple'` dictionary for user handle/displayName matching.
+  - Drops: searches `title || body`, returns author, hub, heat, replyCount, createdAt. Excludes removed drops.
+  - Hubs: searches `name || description`, returns memberCount, dropCount, icon.
+  - Users: searches `handle || displayName`, returns avatar, clout.
+  - All raw queries are fully parameterised (no string interpolation); `Prisma.raw()` only for integer literals.
+  - BigInt reply/member counts serialised to Number before JSON response.
+  - 60s Redis cache per (type, limit, cursor, q). Rate limited: 30/min per IP.
+
+- **`src/app/api/drops/[id]/stash/route.ts`** — Stash toggle for a specific drop:
+  - `POST` (auth): upsert Stash record — idempotent, already-stashed is a no-op. Returns `{ stashed: true }`.
+  - `DELETE` (auth): `deleteMany` — idempotent, not-stashed is a no-op. Returns `{ stashed: false }`.
+  - Verifies drop exists and is not removed before POST.
+
+- **`src/app/api/user/stash/route.ts`** — `GET /api/user/stash` (auth required):
+  - Cursor-paginated list of user's stashed drops, newest first (limit 1–50, default 20).
+  - Includes drop with author, hub, heat, reply count.
+  - Filters out stash entries for drops soft-deleted since stashing.
+  - 30s Redis cache per (userId, cursor, limit).
+
+- **`src/app/api/hubs/trending/route.ts`** — `GET /api/hubs/trending` (public):
+  - Counts drops created in the last 24h per hub using a filtered `COUNT` aggregate in a single raw query.
+  - Returns top 10 hubs ordered by new-drop count DESC. Includes name, slug, icon, memberCount, newDropCount.
+  - 10-minute Redis cache.
+
+- **`src/app/api/hubs/recommended/route.ts`** — `GET /api/hubs/recommended` (auth optional):
+  - Authenticated: top 5 hubs by member count that the user is NOT already a member of.
+  - Unauthenticated: top 5 hubs by member count globally.
+  - 5-minute Redis cache per (userId | "anon").
+
+- **`src/app/sitemap.ts`** — Next.js 14 metadata sitemap (`MetadataRoute.Sitemap`):
+  - Static pages: `/`, `/hubs`, `/stream`, `/login`, `/register` with appropriate changeFreq + priority.
+  - All hub pages (`/h/<slug>`) — lastModified = hub.updatedAt, hourly, priority 0.8.
+  - Recent 1000 non-removed drops (`/drops/<id>`) — lastModified = drop.updatedAt, daily, priority 0.6.
+  - All user profiles (`/u/<handle>`) — lastModified = user.updatedAt, weekly, priority 0.5.
+  - Three parallel Prisma queries (hubs, drops, users) for efficiency.
+
+- **`src/app/robots.ts`** — Next.js 14 metadata robots (`MetadataRoute.Robots`):
+  - Allow all crawlers for `/`; disallow `/admin`, `/settings`, `/api`.
+  - Points to `<NEXTAUTH_URL>/sitemap.xml`.
+
+- **`src/app/api/og/route.tsx`** — Edge-runtime OG image generation (`@vercel/og`):
+  - Params: `title` (required, capped at 120 chars), `description?` (capped at 200 chars), `type` (drop|hub|default).
+  - 1200×630 dark-themed branded card: PostUp flame logo, type badge, large title, description, tagline footer.
+  - Font size adapts to title length (40px if >60 chars, 52px otherwise).
+  - `export const runtime = "edge"` for low-latency image generation at the CDN edge.
+
+- **`src/middleware.ts`** — Added to public allow-list:
+  - `/api/search`, `/api/hubs/trending`, `/api/hubs/recommended`, `/api/og`, `/sitemap.xml`, `/robots.txt`
+
+### Key decisions
+
+- **Parameterised FTS via tagged template literals**: `db.$queryRaw\`...\`` with `${q}` interpolation uses Prisma's `sqltag` which produces a parameterised prepared statement — never raw string concatenation. This is safe against SQL injection even for the free-text search query.
+- **`Prisma.raw()` only for integer literals**: LIMIT values are integers from validated Zod transforms, never user-supplied strings, so `Prisma.raw(String(limit))` is safe for these specific placements.
+- **`'simple'` dictionary for user search**: handles (lowercase alphanumeric + underscore) don't benefit from English stemming; `'simple'` dictionary matches the literal token, which is correct for handle search.
+- **BigInt serialisation**: `$queryRaw` returns PostgreSQL `bigint` aggregate counts as JS `BigInt`; these are converted to `Number` before JSON serialisation to avoid `JSON.stringify` throwing.
+- **Trending uses filtered `COUNT` aggregate**: a single query with `COUNT(...) FILTER (WHERE ...)` computes new-drop counts without a subquery or application-level join. The `HAVING > 0` clause excludes hubs with no recent activity from the result.
+- **Stash uses `deleteMany` for idempotent DELETE**: avoids the 404 code path — the operation always succeeds whether or not the record existed.
+- **OG edge runtime**: `@vercel/og` renders React JSX to PNG at the edge; no Node.js runtime dependency. Inline styles only (no Tailwind) since edge JSX doesn't run the CSS pipeline.
+- **Sitemap parallel queries**: hub, drop, and user queries run concurrently with `Promise.all` since they're independent. The sitemap is regenerated on every request (Next.js caches it via ISR in production).
+
+### Verified
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+- **Phase 7 — backend complete, frontend in progress.**
+- **Next:** Phase 7 frontend — Search UI, Stash page, trending/recommended hub widgets, SEO metadata on pages.
+
+---
+
 ## 2026-06-14 — Phase 6 backend: Warden tools, report system, mod log, Overseer admin, ban system
 
 ### Created / Modified

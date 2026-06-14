@@ -55,6 +55,12 @@ const PUBLIC_PATHS = [
   /^\/api\/replies\/[^/]+$/, // GET reply detail (auth enforced in handler for PATCH/DELETE)
   /^\/api\/hubs\/[^/]+\/mod-log$/, // public hub mod log
   /^\/api\/reports$/, // GET reports (warden/overseer scoped in handler); POST auth enforced in handler
+  /^\/api\/search$/, // full-text search (public; rate-limited in handler)
+  /^\/api\/hubs\/trending$/, // trending hubs (public)
+  /^\/api\/hubs\/recommended$/, // recommended hubs (auth optional in handler)
+  /^\/api\/og$/, // OG image generation (public; edge runtime)
+  /^\/sitemap\.xml$/, // sitemap
+  /^\/robots\.txt$/, // robots.txt
 ];
 
 function isPublicPath(pathname: string): boolean {
