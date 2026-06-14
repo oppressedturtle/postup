@@ -44,6 +44,48 @@
   }
 }
 
+/* Focus visible ring for keyboard nav */
+:focus-visible {
+  outline: 2px solid rgb(249 86 18); /* brand-500 */
+  outline-offset: 2px;
+}
+
+/* Skip to main content link */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+  width: auto;
+  height: auto;
+  z-index: 9999;
+  background: rgb(var(--card));
+  color: rgb(249 86 18);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: 2px solid rgb(249 86 18);
+  font-weight: 500;
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer components {
   /* @mention links in reply bodies */
   a.mention {

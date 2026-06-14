@@ -10,6 +10,7 @@ import { fetchOEmbed } from '@/lib/oembed';
 import { HubIcon } from '@/components/hubs/hub-card';
 import { DeleteDropButton } from '@/components/drops/delete-drop-button';
 import { VoteButtons } from '@/components/drops/vote-buttons';
+import { StashButton } from '@/components/drops/stash-button';
 import { ReplySection } from '@/components/replies/reply-section';
 import type { LinkPreviewData } from '@/types/drop';
 import type { Reply } from '@/types/reply';
@@ -85,7 +86,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: drop.title,
       description: description ?? undefined,
-      images: drop.imageUrl ? [drop.imageUrl] : undefined,
+      type: 'article',
+      images: [
+        {
+          url: `/api/og?title=${encodeURIComponent(drop.title)}&type=drop`,
+          width: 1200,
+          height: 630,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: drop.title,
+      description: description ?? undefined,
     },
   };
 }
@@ -152,12 +165,22 @@ export default async function DropDetailPage({ params }: Props) {
 
   // Check warden status if user is authenticated and not author/overseer
   let isWarden = false;
-  if (userId && !isAuthor && userRole !== 'OVERSEER') {
-    const membership = await db.membership.findUnique({
-      where: { userId_hubId: { userId, hubId: drop.hubId } },
-      select: { role: true },
-    });
-    isWarden = membership?.role === 'WARDEN';
+  let isStashed = false;
+  if (userId) {
+    const [membership, stash] = await Promise.all([
+      (!isAuthor && userRole !== 'OVERSEER')
+        ? db.membership.findUnique({
+            where: { userId_hubId: { userId, hubId: drop.hubId } },
+            select: { role: true },
+          })
+        : Promise.resolve(null),
+      db.stash.findUnique({
+        where: { userId_dropId: { userId, dropId: drop.id } },
+        select: { dropId: true },
+      }),
+    ]);
+    isWarden = membership?.role === 'WARDEN' ?? false;
+    isStashed = stash !== null;
   }
   const canDeleteFinal = canDelete || isWarden;
 
@@ -315,6 +338,8 @@ export default async function DropDetailPage({ params }: Props) {
                 Locked
               </span>
             )}
+
+            <StashButton dropId={drop.id} initialStashed={isStashed} />
 
             {isAuthor && drop.type === 'TEXT' && (
               <Link

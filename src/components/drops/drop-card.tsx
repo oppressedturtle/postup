@@ -9,6 +9,7 @@ import { useSession } from 'next-auth/react';
 import type { Drop, LinkPreviewData } from '@/types/drop';
 import { HubIcon } from '@/components/hubs/hub-card';
 import { VoteButtons } from './vote-buttons';
+import { StashButton } from './stash-button';
 import { ReportButton } from '@/components/moderation/report-button';
 import { DropModMenu } from '@/components/moderation/drop-mod-menu';
 
@@ -162,9 +163,11 @@ export interface DropCardProps {
   userRole?: string;
   /** Hub-level role of the current user (WARDEN if they moderate this hub) */
   userHubRole?: string;
+  /** Whether the current user has stashed this drop */
+  initialStashed?: boolean;
 }
 
-export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false, voteState, userRole, userHubRole }: DropCardProps) {
+export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false, voteState, userRole, userHubRole, initialStashed = false }: DropCardProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const [deleting, setDeleting] = useState(false);
@@ -312,6 +315,7 @@ export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false, vote
           <button
             type="button"
             onClick={() => void handleShare()}
+            aria-label="Share drop"
             className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[rgb(var(--muted))] hover:bg-[rgb(var(--border))] transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -319,8 +323,10 @@ export function DropCard({ drop, isAuthor = false, onDeleted, nsfw = false, vote
               <polyline points="16 6 12 2 8 6" />
               <line x1="12" y1="2" x2="12" y2="15" />
             </svg>
-            {copied ? 'Copied!' : 'Share'}
+            <span className="hidden sm:inline">{copied ? 'Copied!' : 'Share'}</span>
           </button>
+
+          <StashButton dropId={drop.id} initialStashed={initialStashed} />
 
           {isAuthor && drop.type === 'TEXT' && (
             <Link

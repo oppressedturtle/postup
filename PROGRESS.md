@@ -1,5 +1,89 @@
 # PostUp — Progress Log
 
+## 2026-06-14 — Phase 7 frontend: Search UI, Stash page, notifications center, hub explore, responsive, a11y, SEO
+
+### Created
+
+- **`src/components/search/search-bar.tsx`** — `<SearchBar>` client component:
+  - Prominent search input in site header (desktop); icon-only that expands on mobile.
+  - Debounced 300ms, min 2 chars. Fetches `GET /api/search?q=…&limit=3`.
+  - Dropdown panel (max-height 480px, scrollable): Drops · Hubs · Users sections, each up to 3 results.
+  - Loading skeleton, empty state with query echo.
+  - Keyboard nav: ArrowUp/Down move between results, Enter navigates, Escape closes.
+  - AbortController cancels in-flight requests on new input.
+  - "See all results for '…'" link at bottom → `/search?q=…`.
+  - Click-outside closes; ARIA listbox/option roles.
+
+- **`src/components/mobile-nav.tsx`** — `<MobileNav>` slide-in drawer:
+  - All nav links including Stash and Notifications for authenticated users.
+  - Backdrop click and Escape key dismiss. Body scroll locked when open.
+  - role="dialog" aria-modal="true".
+
+- **`src/components/drops/stash-button.tsx`** — `<StashButton>` client component:
+  - Bookmark icon (filled when stashed, outline when not).
+  - Optimistic toggle; reverts on API failure.
+  - Unauthenticated users redirected to `/login`.
+  - Props: `dropId: string`, `initialStashed: boolean`.
+
+- **`src/app/search/page.tsx`** — Search results page (server component):
+  - Reads `?q=` and `?type=` from searchParams.
+  - Direct Prisma FTS queries for SSR (no client waterfall).
+  - Tab bar: All · Drops · Hubs · Users (URL-driven).
+  - `<DropCard>` grid for drops, `<HubCard>` grid for hubs, user cards with avatar/handle/clout/bio.
+  - Per-tab empty states. `generateMetadata` with dynamic title.
+
+- **`src/app/stash/page.tsx`** — Stash page (server component):
+  - Auth-guarded (redirect to `/login`).
+  - Fetches stashed drops with author + hub + counts, filters soft-deleted.
+  - Renders `<DropCard>` list with `initialStashed={true}` for correct button state.
+  - Empty state with bookmark icon illustration.
+
+- **`src/app/notifications/page.tsx`** — Notifications page (server component):
+  - Auth-guarded. Fetches first page (20) server-side.
+  - Passes to `<NotificationList>` client component.
+
+- **`src/app/notifications/notification-list.tsx`** — `<NotificationList>` client component:
+  - Groups notifications by Today / Yesterday / Earlier.
+  - Infinite scroll via "Load more" cursor pagination.
+  - Type-specific icons (REPLY_TO_DROP, REPLY_TO_REPLY, MENTION, DROP_BOOSTED).
+  - "Mark all read" button; auto-marks visible unread after 2s delay.
+  - Unread dot indicator per item; full-page empty state.
+
+### Modified
+
+- **`src/components/site-header.tsx`** — Converted to client component using `useSession`:
+  - Integrated `<SearchBar>` between logo/nav and user controls.
+  - Hamburger button on mobile opens `<MobileNav>` drawer.
+  - `<nav aria-label="Main">` for desktop links; `<nav aria-label="User">` for right controls.
+  - Mobile notification bell links to `/notifications` directly.
+
+- **`src/components/user-nav.tsx`** — Added "My Stash" → `/stash` and "Notifications" → `/notifications` menu items.
+
+- **`src/components/drops/drop-card.tsx`** — Added `initialStashed` prop and `<StashButton>` in footer between Share and Report. Share label hidden on mobile (`hidden sm:inline`). `aria-label="Share drop"` on share button.
+
+- **`src/app/drops/[id]/page.tsx`** — Added `<StashButton>` in action bar. Fetches stash state alongside warden check. Updated `generateMetadata` with `openGraph.type: "article"`, OG image URL, `twitter.card: "summary_large_image"`.
+
+- **`src/app/h/[slug]/page.tsx`** — Updated `generateMetadata` with hub OG image, `twitter.card: "summary_large_image"`.
+
+- **`src/app/hubs/page.tsx`** — Added Trending Now horizontal scroll row (fetches `/api/hubs/trending`) and Recommended for You grid (fetches `/api/hubs/recommended`, auth-only).
+
+- **`src/app/layout.tsx`** — Added `metadataBase`, default `openGraph` with PostUp brand, `twitter.card: "summary"`. Added skip-to-content `<a href="#main-content">` link. Added `id="main-content"` to `<main>`.
+
+- **`src/app/globals.css`** — Added `:focus-visible` ring (brand-500), `.skip-link` / `.skip-link:focus` styles, `prefers-reduced-motion` media query.
+
+- **`src/app/admin/layout.tsx`** — Admin sidebar collapses to horizontal tab strip on mobile (`sm:hidden` / `hidden sm:flex`).
+
+### Verification
+
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+**Phase 7 complete.**
+
+**Next:** Phase 8 — Hardening & Tests: Vitest server/API tests, component tests, Playwright E2E, GitHub Actions CI matrix.
+
+---
+
 ## 2026-06-14 — Phase 7 backend: Full-text search, Stash, trending/recommended hubs, sitemap, OG images
 
 ### Created / Modified

@@ -38,6 +38,22 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `h/${hub.slug}`,
     description: hub.description || `Welcome to h/${hub.slug} on PostUp.`,
+    openGraph: {
+      title: `h/${hub.slug} — PostUp`,
+      description: hub.description || `Welcome to h/${hub.slug} on PostUp.`,
+      images: [
+        {
+          url: `/api/og?title=${encodeURIComponent('h/' + hub.slug)}&description=${encodeURIComponent(hub.description)}&type=hub`,
+          width: 1200,
+          height: 630,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `h/${hub.slug} — PostUp`,
+      description: hub.description || `Welcome to h/${hub.slug} on PostUp.`,
+    },
   };
 }
 

@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import { HubCard } from '@/components/hubs/hub-card';
+import { HubCard, HubIcon } from '@/components/hubs/hub-card';
 import { HubSearch } from './hub-search';
 
 export const metadata: Metadata = {
@@ -15,6 +15,24 @@ type SortParam = 'popular' | 'new';
 
 interface Props {
   searchParams: Promise<{ sort?: string }>;
+}
+
+interface TrendingHub {
+  id: string;
+  slug: string;
+  name: string;
+  icon: string | null;
+  memberCount: number;
+  newDropCount: number;
+}
+
+interface RecommendedHub {
+  id: string;
+  slug: string;
+  name: string;
+  icon: string | null;
+  description: string;
+  memberCount: number;
 }
 
 export default async function HubsPage({ searchParams }: Props) {
@@ -33,18 +51,46 @@ export default async function HubsPage({ searchParams }: Props) {
     }),
   ]);
 
+  const userId = session?.user?.id ?? null;
+
   // Get the current user's memberships for join button state
   let memberSlugs = new Set<string>();
-  if (session?.user?.id) {
+  if (userId) {
     const memberships = await db.membership.findMany({
-      where: { userId: session.user.id },
+      where: { userId },
       include: { hub: { select: { slug: true } } },
     });
     memberSlugs = new Set(memberships.map((m) => m.hub.slug));
   }
 
+  // Fetch trending and recommended from internal APIs (server-side)
+  let trendingHubs: TrendingHub[] = [];
+  let recommendedHubs: RecommendedHub[] = [];
+
+  try {
+    const baseUrl = process.env.NEXTAUTH_URL ?? 'http://localhost:3000';
+    const [trendingRes, recommendedRes] = await Promise.all([
+      fetch(`${baseUrl}/api/hubs/trending`, { next: { revalidate: 600 } }),
+      fetch(`${baseUrl}/api/hubs/recommended`, {
+        next: { revalidate: 300 },
+        headers: userId ? { cookie: '' } : {},
+      }),
+    ]);
+
+    if (trendingRes.ok) {
+      const data = (await trendingRes.json()) as { hubs: TrendingHub[] };
+      trendingHubs = data.hubs ?? [];
+    }
+    if (recommendedRes.ok) {
+      const data = (await recommendedRes.json()) as { hubs: RecommendedHub[] };
+      recommendedHubs = data.hubs ?? [];
+    }
+  } catch {
+    // Non-fatal — sections are simply omitted on error
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -64,6 +110,74 @@ export default async function HubsPage({ searchParams }: Props) {
           </Link>
         )}
       </div>
+
+      {/* Trending Now */}
+      {trendingHubs.length > 0 && (
+        <section aria-labelledby="trending-heading">
+          <h2
+            id="trending-heading"
+            className="mb-3 text-base font-semibold text-[rgb(var(--fg))]"
+          >
+            Trending Now
+          </h2>
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+            {trendingHubs.map((hub) => {
+              const initial = (hub.name[0] ?? 'H').toUpperCase();
+              return (
+                <Link
+                  key={hub.id}
+                  href={`/h/${hub.slug}`}
+                  className="flex shrink-0 flex-col items-center gap-2 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-4 text-center hover:border-brand-500/50 transition-colors w-36"
+                >
+                  <HubIcon src={hub.icon} initial={initial} size={40} />
+                  <div>
+                    <p className="text-sm font-semibold text-[rgb(var(--fg))] truncate max-w-[7rem]">
+                      h/{hub.slug}
+                    </p>
+                    <p className="text-xs text-[rgb(var(--muted))]">
+                      {hub.memberCount.toLocaleString()} members
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-brand-500/10 px-2 py-0.5 text-xs font-medium text-brand-500">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M12 4l8 14H4z" />
+                    </svg>
+                    {hub.newDropCount} new today
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Recommended for You (auth only) */}
+      {userId && recommendedHubs.length > 0 && (
+        <section aria-labelledby="recommended-heading">
+          <h2
+            id="recommended-heading"
+            className="mb-3 text-base font-semibold text-[rgb(var(--fg))]"
+          >
+            Recommended for You
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {recommendedHubs.slice(0, 5).map((hub) => (
+              <HubCard
+                key={hub.id}
+                hub={{
+                  slug: hub.slug,
+                  name: hub.name,
+                  description: hub.description,
+                  icon: hub.icon,
+                  nsfw: false,
+                  memberCount: hub.memberCount,
+                }}
+                isMember={false}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Sort tabs */}
       <div

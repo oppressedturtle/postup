@@ -112,6 +112,24 @@ export function UserNav() {
           </Link>
 
           <Link
+            href="/stash"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--fg))] hover:bg-brand-500/10 transition-colors"
+          >
+            My Stash
+          </Link>
+
+          <Link
+            href="/notifications"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-[rgb(var(--fg))] hover:bg-brand-500/10 transition-colors"
+          >
+            Notifications
+          </Link>
+
+          <Link
             href="/settings"
             role="menuitem"
             onClick={() => setOpen(false)}
