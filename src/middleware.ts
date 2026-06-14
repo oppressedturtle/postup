@@ -22,6 +22,12 @@
  *   /api/users/top        — Clout leaderboard (public)
  *   /api/drops/[id]/replies (GET) — reply list (auth enforced in handler for POST)
  *   /api/replies/[id] (GET)       — reply detail (auth enforced in handler for PATCH/DELETE)
+ *   /api/hubs/[slug]/mod-log (GET) — public moderation log
+ *   /api/reports (GET)            — warden/overseer scoped in handler
+ *
+ * Protected (require auth, enforced at middleware):
+ *   /api/admin/*                  — Overseer admin API (role enforced in handler)
+ *   /api/reports POST             — report submission (auth enforced in handler)
  *
  * Note: GET-only public API routes are allowed for all HTTP methods at
  * the middleware level; route handlers enforce auth for mutating methods.
@@ -47,6 +53,8 @@ const PUBLIC_PATHS = [
   /^\/api\/users\/top$/, // Clout leaderboard (public)
   /^\/api\/drops\/[^/]+\/replies$/, // GET reply list (auth enforced in handler for POST)
   /^\/api\/replies\/[^/]+$/, // GET reply detail (auth enforced in handler for PATCH/DELETE)
+  /^\/api\/hubs\/[^/]+\/mod-log$/, // public hub mod log
+  /^\/api\/reports$/, // GET reports (warden/overseer scoped in handler); POST auth enforced in handler
 ];
 
 function isPublicPath(pathname: string): boolean {

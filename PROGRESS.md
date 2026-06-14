@@ -1,5 +1,84 @@
 # PostUp — Progress Log
 
+## 2026-06-14 — Phase 6 backend: Warden tools, report system, mod log, Overseer admin, ban system
+
+### Created / Modified
+
+- **`prisma/schema.prisma`** — Added enums: `ReportReason` (SPAM, HARASSMENT, HATE_SPEECH, MISINFORMATION, NSFW_CONTENT, OTHER), `ReportStatus` (PENDING, RESOLVED, DISMISSED), `ModActionType` (12 action types covering drop/reply/user/report moderation). Added models:
+  - `Report` — links reporter user to a Drop or Reply (exactly one), carries reason + details + status + resolved-by metadata. Indexed on `(status, createdAt DESC)`, `dropId`, `replyId`.
+  - `ModLog` — audit trail entry per moderation action; hubId null for site-wide OVERSEER actions. Indexed on `(hubId, createdAt DESC)` and `moderatorId`.
+  - `HubBan` — unique `(userId, hubId)` ban record with bannedBy + reason. Cascades on user/hub delete.
+  - Added `suspended Boolean @default(false)` to `User`.
+  - Added relations to `User` (`reportsFiled`, `modActions`, `hubBans`), `Hub` (`modLogs`, `bans`), `Drop` (`reports`), `Reply` (`reports`).
+  - Ran `prisma generate` to regenerate the client.
+
+- **`src/lib/mod-log.ts`** — `logModAction(params)` wrapper around `db.modLog.create()`. Catches and logs all errors internally so logging failures never block moderation actions.
+
+- **`src/lib/check-ban.ts`** — `isUserBanned(userId, hubId)`: checks Redis cache first (`ban:<userId>:<hubId>`, 5-min TTL), falls back to DB on cache miss. Safe default on infrastructure failure (returns false to avoid blocking legitimate users). `invalidateBanCache(userId, hubId)` for immediate effect after ban/unban.
+
+- **`src/app/api/drops/[id]/moderate/route.ts`** — `POST` (WARDEN or OVERSEER):
+  - Zod: `action` (pin|unpin|lock|unlock|remove|restore), `reason?`.
+  - pin/unpin → `isPinned` toggle; lock/unlock → `isLocked` toggle.
+  - remove → `isRemoved=true`, body/imageUrl/videoUrl/linkUrl/linkPreview cleared (`Prisma.JsonNull` for the JSON field).
+  - restore → `isRemoved=false`.
+  - Invalidates `drop:<id>` + all `feed:*` Redis keys. Logs via `logModAction()`.
+
+- **`src/app/api/replies/[id]/moderate/route.ts`** — `POST` (WARDEN or OVERSEER):
+  - Actions: remove (`isRemoved=true`, `body="[removed]"`) | restore (`isRemoved=false`).
+  - Invalidates `reply:<id>` + `replies:<dropId>:*` cache keys. Logs mod action.
+
+- **`src/app/api/hubs/[slug]/bans/route.ts`** — Hub ban management:
+  - `GET`: paginated ban list with user handle + avatar. WARDEN or OVERSEER only.
+  - `POST`: ban by handle. Checks for duplicates (409). Creates `HubBan` + deletes `Membership` in a single Prisma transaction. Invalidates ban cache. Logs `BAN_USER`.
+  - `DELETE`: unban by handle. Deletes `HubBan`, invalidates cache, logs `UNBAN_USER`.
+
+- **`src/app/api/reports/route.ts`** — Report system:
+  - `POST` (auth): Zod validates exactly one of dropId/replyId + reason + details (≤500). Rate-limited 10/hour per user. Deduplication: one report per (reporterId, content). Returns 201.
+  - `GET` (WARDEN with hubSlug / OVERSEER): paginated pending reports (limit 20). WARDENs must pass `hubSlug`; scoped to drops/replies in that hub. Includes reporter handle, content snippet, reason, createdAt.
+
+- **`src/app/api/reports/[id]/route.ts`** — Report resolution:
+  - `PATCH` (WARDEN of relevant hub or OVERSEER): body `{ action: "resolve"|"dismiss", reason? }`.
+  - resolve → also soft-removes the reported content (drop or reply). dismiss → status only.
+  - Guards: 409 if already resolved/dismissed. Logs mod action(s) for both the report and the content removal.
+
+- **`src/app/api/hubs/[slug]/mod-log/route.ts`** — Public mod log:
+  - `GET` (public): paginated hub mod log (limit 50). Includes moderator handle, action, target IDs, reason, timestamp. 60s Redis cache per (slug, cursor, limit).
+
+- **`src/app/api/admin/users/route.ts`** — `GET` (OVERSEER): search users by handle/email, filter by role, paginated. Returns handle, email, role, clout, suspended, createdAt, hubBan count.
+
+- **`src/app/api/admin/users/[handle]/route.ts`** — `PATCH` (OVERSEER): change role (MEMBER↔OVERSEER) or toggle suspended. Prevents self-modification. Logs BAN_USER/UNBAN_USER for suspension changes.
+
+- **`src/app/api/admin/hubs/route.ts`** — `GET` (OVERSEER): list all hubs with member/drop counts, creator, NSFW flag. Searchable by name/slug.
+
+- **`src/app/api/admin/hubs/[slug]/route.ts`** — `DELETE` (OVERSEER): hard-delete hub with required reason body field. Cascades via Prisma. Evicts hub + feed Redis keys.
+
+- **`src/app/api/admin/reports/route.ts`** — `GET` (OVERSEER): all reports across all hubs, filterable by status (default PENDING), paginated. Full content context including hub slug.
+
+- **`src/app/api/drops/route.ts`** — POST updated: ban check via `isUserBanned()` after membership check (403 if banned). New-account limit: accounts < 24 h old may create max 2 drops/day.
+
+- **`src/app/api/drops/[id]/replies/route.ts`** — POST updated: ban check (403 if banned). New-account limit: accounts < 24 h old may create max 5 replies/day.
+
+- **`src/middleware.ts`** — Added to public allow-list: `/api/hubs/[slug]/mod-log`, `/api/reports`. Admin routes (`/api/admin/*`) are protected by default (not in public allow-list); role enforcement in handler.
+
+### Key decisions
+
+- **`Prisma.JsonNull` for nullable JSON fields**: setting `linkPreview: null` in a Prisma update for a `Json?` column requires `Prisma.JsonNull` (not JS `null`) to explicitly set the DB value to SQL NULL. This is a Prisma v7 requirement.
+- **Ban cache safe default**: on Redis or DB failure, `isUserBanned` returns `false` rather than blocking users. Bans are a soft enforcement mechanism; it's preferable to let a request through on infrastructure failure than to break posting for all users.
+- **Ban + membership deletion in transaction**: ensures a banned user's membership is removed atomically with the ban creation, preventing the race condition where they could still post between the two operations.
+- **New-account limits via DB count**: using a simple `count()` per calendar day (UTC) rather than a Redis counter avoids cache staleness concerns on the critical correctness path for rate controls.
+- **Mod log never blocks**: `logModAction` catches all errors internally. A logging failure must not fail the moderation action — the moderation always takes effect first.
+- **Public mod log with 60s cache**: Reddit's public mod log model — transparency is a core feature, not an admin concern. The 60s cache keeps it responsive under load.
+- **Report deduplication at DB level** (not cache): one report per (reporterId, dropId|replyId) is enforced by `findFirst` before create, not a unique constraint, allowing the same content to be reported by multiple users.
+
+### Verified
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+- **Phase 6 — backend complete, frontend in progress.**
+- **Next:** Phase 6 frontend — Warden mod panel, report queue UI, mod log view, Overseer admin dashboard.
+
+
+
 ## 2026-06-14 — Phase 5 backend: Reply CRUD, threaded fetch, @mention parsing, notification system
 
 ### Created / Modified

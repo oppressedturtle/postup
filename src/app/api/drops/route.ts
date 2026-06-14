@@ -36,6 +36,7 @@ import { redis } from "@/lib/redis";
 import { requireAuth } from "@/lib/auth-helpers";
 import { fetchLinkPreview } from "@/lib/link-preview";
 import { rateLimit } from "@/lib/rate-limit";
+import { isUserBanned } from "@/lib/check-ban";
 import { hotScore, isRising } from "@/lib/ranking";
 import logger from "@/lib/logger";
 
@@ -163,6 +164,51 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       { status: 403 },
     );
+  }
+
+  // Ban check: blocked users cannot post
+  const banned = await isUserBanned(user.id, hub.id);
+  if (banned) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "FORBIDDEN",
+          message: "You are banned from this hub.",
+        },
+      },
+      { status: 403 },
+    );
+  }
+
+  // New-account rate control: accounts < 24 h old are limited to 2 drops/day
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const userRecord = await db.user.findUnique({
+    where: { id: user.id },
+    select: { createdAt: true },
+  });
+
+  if (userRecord && userRecord.createdAt > oneDayAgo) {
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+
+    const todayDropCount = await db.drop.count({
+      where: {
+        authorId: user.id,
+        createdAt: { gte: startOfDay },
+      },
+    });
+
+    if (todayDropCount >= 2) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "NEW_ACCOUNT_LIMIT",
+            message: "New accounts are limited for the first 24 hours.",
+          },
+        },
+        { status: 403 },
+      );
+    }
   }
 
   // Fetch link preview for LINK drops

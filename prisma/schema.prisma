@@ -42,6 +42,36 @@ enum DropType {
   LINK
 }
 
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  HATE_SPEECH
+  MISINFORMATION
+  NSFW_CONTENT
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum ModActionType {
+  REMOVE_DROP
+  RESTORE_DROP
+  PIN_DROP
+  UNPIN_DROP
+  LOCK_DROP
+  UNLOCK_DROP
+  REMOVE_REPLY
+  RESTORE_REPLY
+  BAN_USER
+  UNBAN_USER
+  RESOLVE_REPORT
+  DISMISS_REPORT
+}
+
 // ---------------------------------------------------------------------------
 // Auth.js / NextAuth models
 // ---------------------------------------------------------------------------
@@ -106,6 +136,7 @@ model User {
   /// Aggregate reputation score (updated by triggers / background job).
   clout         Int       @default(0)
   role          Role      @default(MEMBER)
+  suspended     Boolean   @default(false)
   emailVerified DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -121,6 +152,9 @@ model User {
   /// Hubs this user created.
   authoredHubs  Hub[]
   notifications Notification[]
+  reportsFiled  Report[]        @relation("ReportsFiled")
+  modActions    ModLog[]        @relation("ModActions")
+  hubBans       HubBan[]        @relation("HubBans")
 }
 
 /// A community (subreddit-equivalent).
@@ -144,6 +178,8 @@ model Hub {
   creator     User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
   drops       Drop[]
   memberships Membership[]
+  modLogs     ModLog[]
+  bans        HubBan[]
 
   @@index([createdById])
 }
@@ -186,11 +222,12 @@ model Drop {
   updatedAt   DateTime @updatedAt
 
   // --- relations ---
-  hub       Hub     @relation(fields: [hubId], references: [id], onDelete: Cascade)
-  author    User    @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  hub       Hub      @relation(fields: [hubId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
   replies   Reply[]
   votes     Vote[]
   stashedBy Stash[]
+  reports   Report[]
 
   @@index([hubId, createdAt(sort: Desc)])
   @@index([authorId])
@@ -212,11 +249,12 @@ model Reply {
   updatedAt DateTime @updatedAt
 
   // --- relations ---
-  author   User    @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  drop     Drop    @relation(fields: [dropId], references: [id], onDelete: Cascade)
-  parent   Reply?  @relation("ReplyChildren", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  children Reply[] @relation("ReplyChildren")
+  author   User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  drop     Drop     @relation(fields: [dropId], references: [id], onDelete: Cascade)
+  parent   Reply?   @relation("ReplyChildren", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children Reply[]  @relation("ReplyChildren")
   votes    Vote[]
+  reports  Report[]
 
   @@index([dropId, createdAt(sort: Asc)])
   @@index([authorId])
@@ -274,4 +312,62 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, read, createdAt(sort: Desc)])
+}
+
+/// A content report filed by a user against a Drop or Reply.
+model Report {
+  id         String       @id @default(cuid())
+  reporterId String
+  dropId     String?
+  replyId    String?
+  reason     ReportReason
+  details    String?      @db.Text
+  status     ReportStatus @default(PENDING)
+  resolvedBy String?
+  resolvedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  reporter User   @relation("ReportsFiled", fields: [reporterId], references: [id], onDelete: Cascade)
+  drop     Drop?  @relation(fields: [dropId], references: [id], onDelete: SetNull)
+  reply    Reply? @relation(fields: [replyId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([dropId])
+  @@index([replyId])
+}
+
+/// Moderation action log entry for transparency and audit trail.
+model ModLog {
+  id           String        @id @default(cuid())
+  /// null = site-wide action (OVERSEER)
+  hubId        String?
+  moderatorId  String
+  targetUserId String?
+  dropId       String?
+  replyId      String?
+  reportId     String?
+  action       ModActionType
+  reason       String?       @db.Text
+  createdAt    DateTime      @default(now())
+
+  hub       Hub?  @relation(fields: [hubId], references: [id], onDelete: SetNull)
+  moderator User  @relation("ModActions", fields: [moderatorId], references: [id])
+
+  @@index([hubId, createdAt(sort: Desc)])
+  @@index([moderatorId])
+}
+
+/// Records a user being banned from a specific Hub.
+model HubBan {
+  id        String   @id @default(cuid())
+  userId    String
+  hubId     String
+  bannedBy  String
+  reason    String?  @db.Text
+  createdAt DateTime @default(now())
+
+  user User @relation("HubBans", fields: [userId], references: [id], onDelete: Cascade)
+  hub  Hub  @relation(fields: [hubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, hubId])
 }
