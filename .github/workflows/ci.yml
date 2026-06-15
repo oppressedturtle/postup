@@ -6,11 +6,16 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
-  ci:
-    name: Lint · Typecheck · Test · Build
-    runs-on: ubuntu-latest
+# Note: Playwright E2E tests are intentionally excluded from this CI workflow.
+# E2E tests (e2e/postup.spec.ts) require a seeded PostgreSQL + Redis database
+# and a running Next.js dev server. They are designed for local runs only and
+# are guarded by `test.skip(!E2E_ENABLED)` when `CI=true`. Run `npm run e2e`
+# locally after `npm run db:seed` to execute the golden-path E2E suite.
 
+jobs:
+  lint-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -22,13 +27,56 @@ jobs:
       - run: npm ci
 
       - run: npx prisma generate
-        # Generates Prisma Client so typecheck and build have the typed query API
+        # Generates Prisma Client so typecheck has the typed query API
 
       - run: npm run lint
 
       - run: npm run typecheck
 
-      - run: npm run test
+  unit-tests:
+    name: Unit & Component Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - run: npm test
+
+      - run: npm run test:coverage
+        env:
+          # Dummy values so Zod env validation passes without a real DB
+          DATABASE_URL: postgresql://postup:postup@localhost:5432/postup_dev
+          NEXTAUTH_SECRET: ci-secret-placeholder-min-16-chars
+          NEXTAUTH_URL: http://localhost:3000
+          REDIS_URL: redis://localhost:6379
+          S3_ENDPOINT: http://localhost:9000
+          S3_ACCESS_KEY: minioadmin
+          S3_SECRET_KEY: minioadmin
+          S3_BUCKET: postup
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint-typecheck, unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma generate
 
       - run: npm run build
         env:

@@ -1206,3 +1206,85 @@ Added comprehensive Vitest test coverage for core backend business logic and API
 
 - `npx vitest run` ✓ — 122/122 tests pass across 10 files
 - `tsc --noEmit` ✓ — 0 type errors
+
+---
+
+## 2026-06-15 — Phase 8: Component tests, Playwright E2E suite, CI matrix update
+
+### Phase 8 complete
+
+### Dependencies installed
+
+- `@testing-library/react` `@testing-library/user-event` `@testing-library/jest-dom` — React Testing Library stack for component tests in jsdom.
+- `@vitejs/plugin-react@^4.7.0` — Vite React plugin required for JSX transform in jsdom environment.
+- `@playwright/test` — Playwright E2E test runner.
+
+### Component tests (jsdom environment)
+
+**`src/components/drops/__tests__/vote-buttons.test.tsx`** (10 tests)
+- Initial heat rendering; large number formatting (1200 → "1.2k").
+- Boost button aria-pressed state, optimistic +1 on click.
+- Double-click Boost toggles off, returns heat to baseline.
+- Bury sets heat to -1, bury button active; flip from Bury→Boost swings heat by +2.
+- Unauthenticated click redirects to `/login`, fetch never called.
+- API failure reverts optimistic update.
+- Reply target renders correct resource label.
+
+**`src/components/drops/__tests__/stash-button.test.tsx`** (7 tests)
+- Unfilled bookmark when not stashed; filled when stashed.
+- Optimistic toggle to stashed (POST), optimistic toggle off (DELETE).
+- API error and network error both revert optimistic state.
+- Unauthenticated redirects to `/login`.
+
+**`src/components/hubs/__tests__/join-button.test.tsx`** (7 tests)
+- "Join" / "Joined" rendering based on initial membership state.
+- Click Join: optimistic + POST call; click Leave: optimistic + DELETE call.
+- API failure with error message in `role="alert"`, reverts button.
+- Network error reverts; unauthenticated redirects to `/login`.
+
+**`src/components/moderation/__tests__/report-button.test.tsx`** (10 tests)
+- Report button renders; click opens `role="dialog"`.
+- Dialog contains all 6 reason radio buttons.
+- Reason pre-selected (Spam) → submit enabled immediately.
+- Select Harassment and submit → calls `/api/reports` with correct body.
+- 200 response shows "Thanks, we'll review this" confirmation.
+- 409 response shows "already reported" message.
+- Escape key closes dialog; Cancel button closes dialog.
+- Unauthenticated click redirects to `/login`.
+
+**`src/components/replies/__tests__/reply-form.test.tsx`** (11 tests)
+- Renders textarea + Reply/Cancel buttons; submit disabled when empty.
+- Typing text enables submit; Cancel calls `onCancel`.
+- Submit empty form does not call fetch.
+- Successful submit calls POST with correct body + `parentId`; calls `onSuccess` with returned reply; clears textarea.
+- 429 → rate-limit error inline; 403 → membership error; network error → connection error.
+
+**`src/components/notifications/__tests__/notifications-bell.test.tsx`** (8 tests)
+- Bell button renders; no badge at 0 unread.
+- Badge "3" at 3 unread; badge "99+" at 100 unread.
+- Click bell → dropdown `role="dialog"` opens, notification descriptions rendered.
+- Empty state renders "No notifications yet".
+- "Mark all read" calls `PATCH /api/notifications`, badge disappears.
+- Escape key closes dropdown.
+
+### Playwright E2E setup
+
+- **`playwright.config.ts`** — Chromium, sequential workers, `baseURL: http://localhost:3000`, `webServer` starts `next dev`, `reuseExistingServer` in local mode.
+- **`e2e/postup.spec.ts`** — Full golden-path suite:
+  - Home page loads · Register · Login · Create hub · Post text drop · Boost a drop · Reply to a drop · Stash/unstash · Warden pin · Search.
+  - All tests guarded by `test.skip(!E2E_ENABLED)` when `CI=true` — skipped automatically in CI where no seeded DB is available.
+  - `login()` helper pre-fills email/password for seeded credentials (`overseer@postup.dev`, `testuser@postup.dev`).
+
+### Infrastructure updates
+
+- **`vitest.config.ts`** — Added `@vitejs/plugin-react` plugin; `environmentMatchGlobs` routes `src/components/**/*.test.*` to jsdom; coverage `include` extended to `src/components/**`; `globals: true`.
+- **`src/test/setup.ts`** — Added `@testing-library/jest-dom` import; extended `next-auth/react` mock to include `role`, `clout`, and `update` fields matching the augmented session type.
+- **`package.json`** — Added `e2e`, `e2e:ui`, `e2e:report` scripts.
+- **`.github/workflows/ci.yml`** — Split monolithic job into 3 parallel jobs: `lint-typecheck`, `unit-tests`, `build` (build waits for both). Added top-level comment explaining E2E CI exclusion.
+
+### Verification
+
+- `vitest run` ✓ — 175/175 tests pass across 16 files (122 existing + 53 new component tests)
+- `tsc --noEmit` ✓ — 0 type errors
+
+**Next:** Phase 9 — Deploy-Ready: production Docker build, env docs, deploy guide, polished README with screenshots placeholder.
