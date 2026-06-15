@@ -1,5 +1,34 @@
 # PostUp — Progress Log
 
+## 2026-06-15 — Drift reconciliation + full build verification → BUILDING COMPLETE, advancing to SECURITY
+
+**Context:** local checkout was far behind `origin/main`. Remote already contained Phases 4–9
+(voting/ranking, threaded replies, moderation/admin, discovery/polish, tests/E2E/CI, deploy)
+but the local state file + ROADMAP checkboxes were stale (resume note still said "Phase 4").
+
+**Done:**
+- Fast-forwarded local to `origin/main` (`286fba0`, Phase 9 deploy). No local divergence.
+- Reinstalled deps (merge added `@vitejs/plugin-react`, `vitest`, `@playwright/test`, etc.)
+  and regenerated the Prisma client (custom output `src/generated/prisma`).
+- **Verification (all green):**
+  - **Unit/integration tests:** `vitest run` → **175/175 passing** across 16 files
+    (ranking, votes, hubs, mentions, replies, markdown, SSRF guard, rate-limit, register,
+    and component tests for vote buttons, join, notifications bell, report, reply form, stash).
+  - **Typecheck:** `tsc --noEmit` clean (after Prisma generate).
+  - **Lint:** `next lint` — no warnings or errors.
+  - **Production build:** `next build` succeeds — all routes compiled (stream, hubs, search,
+    stash, notifications, h/[slug], u/[handle], sitemap, API routes, middleware).
+- Reconciled `ROADMAP.md`: checked off all 48 items across Phases 0–9 to match shipped code.
+- Untracked churning `tsconfig.tsbuildinfo` (now gitignored).
+
+**Roadmap:** Phases 0–9 ✅ complete. Building phase done.
+
+**Next:** **SECURITY PHASE** — full audit per ROADMAP (npm audit/CVEs, authz on every route +
+mod/admin action, XSS on markdown/oEmbed/link-preview sanitization, SSRF on fetchers,
+file-upload hardening, session/secret handling, CORS, security headers, rate limits). Write
+`SECURITY.md` with findings + fixes.
+
+
 ## 2026-06-14 — Phase 7 frontend: Search UI, Stash page, notifications center, hub explore, responsive, a11y, SEO
 
 ### Created
