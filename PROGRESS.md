@@ -1166,3 +1166,43 @@
 **Phase 6 complete.**
 
 **Next:** Phase 7 — Discovery & Polish: search (drops/hubs/users), hub explore page, Stash (save drops), notifications center, responsive design, accessibility, SEO metadata.
+
+---
+
+## 2026-06-15 — Phase 8: Vitest Unit + API Tests
+
+### Summary
+
+Added comprehensive Vitest test coverage for core backend business logic and API route handlers. Installed `@vitest/coverage-v8` and wired up `vitest.config.ts` with path aliases, a global setup file, and coverage thresholds (lines: 70, functions: 70, branches: 60). Added `test:watch` and `test:coverage` npm scripts.
+
+**122 tests across 10 test files — all passing.**
+
+### Test files created
+
+**Pure unit tests (no mocking needed):**
+
+- **`src/lib/__tests__/ranking.test.ts`** (16 tests) — `hotScore`, `wilsonScore`, `isRising`: heat/age effects, Wilson confidence interval, rising criteria, edge cases.
+- **`src/lib/__tests__/mentions.test.ts`** (17 tests) — `extractMentions` (dedup, cap at 10, handle length bounds), `linkifyMentions` (bare @handle → anchor, href-context awareness).
+- **`src/lib/__tests__/build-reply-tree.test.ts`** (12 tests) — Flat→tree assembly, parent-child relationships, orphan handling, all 4 sort modes, 6-level deep nesting without stack overflow.
+- **`src/lib/__tests__/markdown.test.ts`** (17 tests) — `renderMarkdown` (bold/italic/lists, script strip, XSS attributes stripped, `<img>` allowed, `<iframe>` stripped), `sanitizeHtml` (DOMPurify pass, iframe allowed for oEmbed).
+- **`src/lib/__tests__/ssrf-guard.test.ts`** (13 tests) — `assertSafeUrl`: scheme checks (file://, ftp://), blocked IPv4 ranges (127.x, 10.x, 192.168.x, 172.16.x, 169.254.x), public IP accepted, DNS failure handling. Uses `vi.mock('dns')`.
+
+**API route tests (mocked DB + Redis):**
+
+- **`src/lib/__tests__/rate-limit.test.ts`** (7 tests) — `rateLimit`: success/remaining tracking, window exhaustion, key isolation, stale-entry pruning, rl: key prefix. In-memory sorted-set mock inside `vi.mock` factory.
+- **`src/app/api/auth/__tests__/register.test.ts`** (13 tests) — POST /api/auth/register: missing/invalid fields (422), invalid email, short password, bad handle, non-JSON body (400), email/handle conflicts (409), successful 201 with no password hash leaked, DB error 500.
+- **`src/app/api/drops/__tests__/vote.test.ts`** (10 tests) — POST /api/drops/[id]/vote: 401 unauthenticated, 422 invalid value, 400 non-JSON, first vote, toggle-off, flip vote (heat +2), self-vote (clout skipped), 404 missing/removed drop.
+- **`src/app/api/hubs/__tests__/hubs.test.ts`** (14 tests) — POST/GET /api/hubs: 401 unauthed, 422 invalid name (uppercase/spaces/hyphens), long description, 400 non-JSON, 409 slug conflict, 201 with hub+membership, nsfw flag, GET list with counts, pagination cursor, 500 on DB error.
+
+**Existing test (unchanged):**
+- **`src/components/theme.test.ts`** (3 tests) — theme provider script.
+
+### Infrastructure
+
+- **`vitest.config.ts`** — `environment: node`, `setupFiles`, coverage config with v8 provider, include/exclude patterns, `@` alias.
+- **`src/test/setup.ts`** — Global mocks for `next/navigation` and `next/headers`.
+
+### Verification
+
+- `npx vitest run` ✓ — 122/122 tests pass across 10 files
+- `tsc --noEmit` ✓ — 0 type errors
