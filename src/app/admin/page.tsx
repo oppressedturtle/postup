@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { db } from '@/lib/db';
 
 export const metadata: Metadata = { title: 'Dashboard' };
+// Always render from the server — never statically prerender (requires live DB).
+export const dynamic = 'force-dynamic';
 
 export default async function AdminDashboardPage() {
   const [totalUsers, totalHubs, totalDrops, pendingReports] = await Promise.all([

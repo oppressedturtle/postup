@@ -20,6 +20,8 @@ const envSchema = z.object({
 
   // ── Redis ──────────────────────────────────────────────────────────────────
   REDIS_URL: z.string().url("REDIS_URL must be a valid URL"),
+  /// Optional Redis password — used in production docker-compose with requirepass.
+  REDIS_PASSWORD: z.string().optional(),
 
   // ── S3-compatible storage ──────────────────────────────────────────────────
   S3_ENDPOINT: z.string().url("S3_ENDPOINT must be a valid URL"),

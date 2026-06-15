@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { signIn } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
@@ -17,7 +17,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   Default: 'Something went wrong. Please try again.',
 };
 
-export default function LoginPage() {
+// Split into an inner component so useSearchParams() is inside a Suspense
+// boundary — required by Next.js 14 for static export compatibility.
+function LoginPageInner() {
   const searchParams = useSearchParams();
   const errorParam = searchParams.get('error');
 
@@ -170,6 +172,14 @@ export default function LoginPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-6 animate-pulse h-96" />}>
+      <LoginPageInner />
+    </Suspense>
   );
 }
 

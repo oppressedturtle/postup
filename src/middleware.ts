@@ -59,6 +59,7 @@ const PUBLIC_PATHS = [
   /^\/api\/hubs\/trending$/, // trending hubs (public)
   /^\/api\/hubs\/recommended$/, // recommended hubs (auth optional in handler)
   /^\/api\/og$/, // OG image generation (public; edge runtime)
+  /^\/api\/health$/, // health check (Docker + uptime monitors)
   /^\/sitemap\.xml$/, // sitemap
   /^\/robots\.txt$/, // robots.txt
 ];

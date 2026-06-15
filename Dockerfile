@@ -61,9 +61,13 @@ COPY --from=builder --chown=nextjs:nodejs /app/public           ./public
 COPY --from=builder --chown=nextjs:nodejs /app/src/generated    ./src/generated
 COPY --from=builder --chown=nextjs:nodejs /app/prisma/schema.prisma ./prisma/schema.prisma
 
+# Entrypoint: runs `prisma migrate deploy` then starts the server.
+# Using root temporarily to copy + chmod, then switching to nextjs.
+COPY --from=builder /app/scripts/entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh && chown nextjs:nodejs entrypoint.sh
+
 USER nextjs
 
 EXPOSE 3000
 
-# The standalone build produces a self-contained server.js in the root.
-CMD ["node", "server.js"]
+CMD ["./entrypoint.sh"]

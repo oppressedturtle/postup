@@ -20,6 +20,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
+    "migrate:prod": "prisma migrate deploy",
+    "start:prod": "NODE_ENV=production node .next/standalone/server.js",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "e2e:report": "playwright show-report",

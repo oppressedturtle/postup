@@ -15,6 +15,10 @@ import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 
+// Force dynamic rendering — sitemap queries the live database and must not
+// be prerendered at build time (no DB available during `next build`).
+export const dynamic = "force-dynamic";
+
 const BASE_URL = env.NEXTAUTH_URL.replace(/\/$/, "");
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

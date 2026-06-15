@@ -1288,3 +1288,73 @@ Added comprehensive Vitest test coverage for core backend business logic and API
 - `tsc --noEmit` ✓ — 0 type errors
 
 **Next:** Phase 9 — Deploy-Ready: production Docker build, env docs, deploy guide, polished README with screenshots placeholder.
+
+---
+
+## 2026-06-15 — Phase 9: Infrastructure — Health check, prod Docker compose, entrypoint, security headers, env docs
+
+### Created
+
+- **`src/app/api/health/route.ts`** — `GET /api/health` health check endpoint:
+  - Checks Postgres (`db.$queryRaw\`SELECT 1\`` with 3s timeout), Redis (`redis.ping()` with 2s timeout), and S3/MinIO (`HeadBucketCommand` with 3s timeout) independently.
+  - Returns `{ status, timestamp, services: { database, redis, storage }, version }`.
+  - HTTP 200 when all services are `"ok"`, 503 when any are `"error"` — JSON body always present.
+  - Each check is wrapped in an independent `withTimeout()` + `try/catch` so one failing service never prevents the others from being reported.
+  - Added `/api/health` to the middleware public allow-list.
+
+- **`docker-compose.prod.yml`** — Production single-server Compose file:
+  - `migrate` one-shot service: runs `npx prisma migrate deploy` before app starts; `depends_on` postgres (healthy), `restart: no`.
+  - `app` service: bound to `127.0.0.1:3000` only (reverse proxy in front), health check via `wget /api/health`, `depends_on` postgres + redis + migrate (completed_successfully).
+  - `postgres:16-alpine`: no exposed port (internal network only), `restart: unless-stopped`.
+  - `redis:7-alpine`: `--requirepass ${REDIS_PASSWORD}`, AOF enabled, no exposed port, `restart: unless-stopped`.
+  - MinIO block included but commented out (use external S3 in production; uncomment for self-hosted).
+  - Named volumes with `driver: local` + explicit `driver_opts` (bind-mount to `/opt/postup/data/`).
+  - `postup-internal` bridge network (not exposed to host; `internal: false` so app can reach external S3/OAuth/SMTP).
+
+- **`scripts/entrypoint.sh`** — Container entrypoint (`set -e`):
+  - Runs `npx prisma migrate deploy` then `exec node server.js`.
+  - Ensures migrations always run before the Next.js server starts in any containerised environment.
+
+- **`.env.production.example`** — Production env template:
+  - All vars from `.env.example` plus: `NODE_ENV=production`, `NEXTAUTH_URL=https://your-domain.com`, `DATABASE_URL` with `sslmode=require`, `REDIS_URL` with password, `REDIS_PASSWORD`, `S3_ENDPOINT`/`S3_ACCESS_KEY`/`S3_SECRET_KEY`/`S3_BUCKET` for real S3, OAuth provider instructions.
+
+- **`prisma/README.md`** — Migration strategy documentation:
+  - Development: `npm run db:migrate` (creates + applies migration files).
+  - Production: `npx prisma migrate deploy` (applies existing files only, never creates).
+  - Rollback: manual down-SQL + `prisma migrate resolve --rolled-back` process documented.
+  - Seeding: development/staging only. CI entrypoint strategy explained.
+
+### Modified
+
+- **`Dockerfile`** — Runner stage updated:
+  - Copies `scripts/entrypoint.sh`, runs `chmod +x` + `chown nextjs:nodejs` before `USER nextjs`.
+  - `CMD` changed from `["node", "server.js"]` to `["./entrypoint.sh"]`.
+
+- **`next.config.mjs`** — Three additions:
+  1. `securityHeaders` array: `X-DNS-Prefetch-Control`, `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, and a full `Content-Security-Policy` (default-src 'self', script/style unsafe-inline for Next.js, img-src includes MinIO + HTTPS, frame-src YouTube/Vimeo/Twitter).
+  2. `async headers()` function applies `securityHeaders` to all routes (`"/(.*)"` source).
+  3. Custom `webpack()` function: adds an `externals` handler that rewrites `node:crypto` → `crypto`, `node:fs` → `fs`, etc. — fixes Prisma 7's `node:` protocol imports which Next.js 14 webpack cannot resolve out of the box. Also adds `experimental.serverComponentsExternalPackages` for the full list of server-only packages.
+
+- **`src/lib/env.ts`** — Added `REDIS_PASSWORD: z.string().optional()` to the env schema for production Redis auth.
+
+- **`src/middleware.ts`** — Added `/api/health` to public allow-list (Docker health check must be unauthenticated).
+
+- **`package.json`** — Added `"migrate:prod": "prisma migrate deploy"` and `"start:prod": "NODE_ENV=production node .next/standalone/server.js"`.
+
+- **`src/app/(auth)/login/page.tsx`** — Wrapped `useSearchParams()` in a Suspense boundary (required by Next.js 14 for static export — was causing build-time prerender error).
+
+- **`src/app/sitemap.ts`** — Added `export const dynamic = "force-dynamic"` (prevents Next.js from trying to prerender sitemap at build time without a live DB).
+
+- **`src/app/admin/page.tsx`** — Added `export const dynamic = 'force-dynamic'` (admin dashboard queries DB; must render on demand).
+
+### Build fixes
+
+The Prisma 7 + Next.js 14 combination has a known webpack incompatibility: `@prisma/client/runtime/client.mjs` uses `node:crypto`, `node:fs`, `node:path`, `node:os`, `node:module` — URI schemes that webpack 5 cannot resolve by default. Fixed via a custom webpack `externals` function that strips the `node:` prefix and emits `commonjs <module>` for each match, allowing the standard Node.js built-in resolution to take over.
+
+### Verification
+
+- `npm run build` ✓ — production build succeeds, all 66 routes compiled
+- `tsc --noEmit` ✓ — 0 type errors
+- `vitest run` ✓ — 175/175 tests pass across 16 files
+
+**Phase 9 complete.**

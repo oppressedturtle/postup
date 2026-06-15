@@ -1,0 +1,167 @@
+# PostUp — production single-server Docker Compose
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Prerequisites:
+#   - .env.production file populated from .env.production.example
+#   - A reverse proxy (Nginx / Caddy / Traefik) in front of port 3000
+#
+# Key differences from docker-compose.yml (dev):
+#   - No MinIO: use a managed S3-compatible service (AWS S3, Cloudflare R2,
+#     Backblaze B2) in production. Uncomment the minio block below if you need
+#     a self-hosted object store on this same server.
+#   - Postgres and Redis are NOT exposed on the host — internal network only.
+#   - App port is bound to 127.0.0.1 only (reverse proxy must be on the host).
+#   - `migrate` one-shot service runs `prisma migrate deploy` before the app
+#     starts, ensuring schema is always up-to-date on deploy.
+#   - Redis uses `--requirepass` for authentication.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── One-shot migration runner ─────────────────────────────────────────────
+  # Runs `prisma migrate deploy` and exits. The `app` service depends on this
+  # completing successfully before it starts.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["npx", "prisma", "migrate", "deploy"]
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - postup-internal
+    restart: "no"
+
+  # ── Next.js application ───────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env.production
+    ports:
+      # Bind to localhost only — Nginx/Caddy/Traefik proxies from 80/443.
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://localhost:3000/api/health || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - postup-internal
+
+  # ── PostgreSQL 16 ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postup}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-postup}
+    # No ports exposed — internal network only.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postup} -d ${POSTGRES_DB:-postup}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - postup-internal
+
+  # ── Redis 7 ──────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # AOF persistence + password auth via REDIS_PASSWORD env var.
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "${REDIS_PASSWORD}",
+      ]
+    # No ports exposed — internal network only.
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - postup-internal
+
+  # ── MinIO (self-hosted S3-compatible storage) ─────────────────────────────
+  # Uncomment if you want MinIO on this server instead of a managed S3 service.
+  # Update S3_ENDPOINT in .env.production to http://minio:9000.
+  #
+  # minio:
+  #   image: minio/minio:latest
+  #   restart: unless-stopped
+  #   command: server /data --console-address ":9001"
+  #   environment:
+  #     MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+  #     MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+  #   # Expose console to localhost only (access via SSH tunnel).
+  #   ports:
+  #     - "127.0.0.1:9001:9001"
+  #   volumes:
+  #     - minio_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 10s
+  #   networks:
+  #     - postup-internal
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/postup/data/postgres
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/postup/data/redis
+  # minio_data:
+  #   driver: local
+  #   driver_opts:
+  #     type: none
+  #     o: bind
+  #     device: /opt/postup/data/minio
+
+# ── Internal network (not exposed to host) ────────────────────────────────────
+networks:
+  postup-internal:
+    driver: bridge
+    internal: false  # false so the app can reach external S3/SMTP/OAuth endpoints
