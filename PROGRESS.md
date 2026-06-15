@@ -1358,3 +1358,45 @@ The Prisma 7 + Next.js 14 combination has a known webpack incompatibility: `@pri
 - `vitest run` ✓ — 175/175 tests pass across 16 files
 
 **Phase 9 complete.**
+
+---
+
+## 2026-06-14 — Phase 9: Documentation — Polished README, comprehensive deploy guide
+
+### Created
+
+- **`DEPLOY.md`** — Comprehensive deployment guide covering three deployment paths:
+  - **Option A: Railway** — managed Postgres + Redis, Dockerfile auto-detected, step-by-step env var setup, Cloudflare R2 S3 walkthrough, custom domain + TLS via Railway.
+  - **Option B: Fly.io** — `fly launch` auto-detection, `fly postgres create` + attach, Upstash Redis integration, Tigris S3-compatible storage via `fly storage create`, `fly secrets set` for all vars.
+  - **Option C: VPS with Docker Compose** — Ubuntu 22.04 provisioning, Docker install, `docker-compose.prod.yml` usage, full Nginx reverse-proxy config with SSL, Certbot certificate setup, deploy + monitoring commands.
+  - Full environment variables reference table (all vars, required flag, description, example).
+  - Database migrations section linking to `prisma/README.md`; note on automatic migration via `entrypoint.sh`.
+  - Health monitoring section: `GET /api/health` response schema, UptimeRobot and Better Uptime as free monitoring options.
+  - S3/storage options comparison table: Cloudflare R2, Backblaze B2, MinIO, AWS S3, Tigris.
+  - Troubleshooting guide: DB connection refused, Redis auth failure, Prisma Client not generated, Zod env validation error, large video upload 413, database reset procedure.
+
+### Modified
+
+- **`README.md`** — Full portfolio-quality rewrite:
+  - CI/TypeScript/License badges.
+  - Overview paragraph (2 sentences).
+  - Lexicon table (all 10 branded terms).
+  - Features section grouped by domain: Communities, Content, Discovery, Voting & Ranking, Moderation, Notifications & UX, Tech.
+  - Tech Stack table with version and role for all 15 dependencies.
+  - Architecture prose covering App Router server components, Prisma singleton, Redis graceful degradation, S3 media streaming, Zod env validation, security headers, and SSRF guard.
+  - Project Status table — all Phases 0–9 marked ✅; Security / QA / Ship marked 🚧.
+  - Getting Started (Local Development) with numbered steps and seeded credentials table.
+  - Available Scripts table — all 21 npm scripts including new `start:prod`, `test:watch`, `test:coverage`, `e2e`, `e2e:ui`, `e2e:report`, `migrate:prod`.
+  - Testing section with commands and explanation of CI vs local E2E.
+  - Deployment section linking to `DEPLOY.md` with quick-comparison table of the three options.
+  - Contributing section (fork → branch → PR).
+  - License.
+
+### Verification
+
+- `tsc --noEmit` ✓ (0 errors)
+- `npm run lint` ✓ (0 warnings)
+
+**Phase 9 complete (docs). All pre-security phases complete.**
+
+**Next phases: SECURITY → QA → SHIP**
