@@ -15,16 +15,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { fetchLinkPreview } from "@/lib/link-preview";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimit, extractClientIp } from "@/lib/rate-limit";
 import logger from "@/lib/logger";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   // Rate limit by IP: 30 requests per minute
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request.headers.get("x-real-ip") ??
-    "unknown";
-
+  const ip = extractClientIp(request);
   const rl = await rateLimit(`linkpreview:ip:${ip}`, 30, 60);
   if (!rl.success) {
     return NextResponse.json(

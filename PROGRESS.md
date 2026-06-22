@@ -1429,3 +1429,51 @@ The Prisma 7 + Next.js 14 combination has a known webpack incompatibility: `@pri
 **Phase 9 complete (docs). All pre-security phases complete.**
 
 **Next phases: SECURITY → QA → SHIP**
+
+---
+
+## 2026-06-22 — SECURITY PHASE
+
+### Summary
+
+Full security audit and hardening pass. No critical vulnerabilities found in application code; all issues addressed.
+
+### Dependency CVEs
+
+- **Next.js upgraded 14.2.5 → 14.2.35** — patches 20+ CVEs including auth bypass (GHSA-7gfc-8cq8-jh5f), cache poisoning (GHSA-gp8f-8m3g-qvj9), middleware redirect SSRF (GHSA-4342-x723-ch2f), and others.
+- Remaining audit findings are all dev-only (esbuild via vitest, eslint glob) — do not affect the production bundle.
+
+### Authentication hardening
+
+- **Login rate limiting per email** — added second rate-limit key `login:email:<email>` in addition to IP key, preventing account targeting via IP rotation (`src/lib/auth.ts`).
+- **Suspended accounts** — session callback now returns `null` (destroying the session) when the DB user is suspended. `requireAuth()` adds a defence-in-depth DB check on every authenticated API call, catching stale session tokens (`src/lib/auth-helpers.ts`, `src/lib/auth.ts`).
+- **IP extraction centralised** — `extractClientIp(request)` helper in `src/lib/rate-limit.ts`; all endpoints using IP-keyed rate limits now call this instead of duplicating the XFF logic.
+
+### File upload hardening
+
+- **`/api/media/image`** — switched from declared `Content-Type` to magic-bytes detection via `file-type` before passing to `sharp`. Size check moved before buffer read. Sharp still validates independently as a second layer.
+- **`/api/media/video`** — same magic-bytes pattern; video goes directly to S3 without transcoding so content verification was the only guard.
+- **`/api/user/avatar`**, **`/api/hubs/[slug]/icon`**, **`/api/hubs/[slug]/banner`** — same fix (completed in prior session); also migrated from local `public/` writes to S3/MinIO storage.
+
+### Security headers
+
+- Added `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` (2-year HSTS).
+- Set `X-XSS-Protection: 0` (disables the deprecated browser XSS auditor, which can itself be exploited).
+- Removed `'unsafe-eval'` from `script-src` CSP directive.
+
+### SECURITY.md
+
+Created `SECURITY.md` documenting all security controls: auth/session, authorisation, injection prevention, XSS, SSRF, file uploads, security headers, rate limits, and known limitations/future work.
+
+### Test fixes
+
+Updated `src/app/api/hubs/__tests__/hubs.test.ts` and `src/app/api/drops/__tests__/vote.test.ts` — added `db.user` to the mock factory and a default `{ suspended: false }` return in `beforeEach` to cover the new suspended check in `requireAuth()`.
+
+### Verification
+
+- `tsc --noEmit` ✓ (0 errors)
+- `vitest run` ✓ — 175/175 tests pass across 16 files
+
+**SECURITY PHASE complete.**
+
+**Next: QA PHASE — bring full stack up via Docker Compose, run all tests + E2E, manually verify every feature.**

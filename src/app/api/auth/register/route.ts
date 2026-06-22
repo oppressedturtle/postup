@@ -18,7 +18,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { authLimiter } from "@/lib/rate-limit";
+import { authLimiter, extractClientIp } from "@/lib/rate-limit";
 import logger from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
@@ -40,11 +40,7 @@ const registerSchema = z.object({
 // ---------------------------------------------------------------------------
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // --- Rate limiting (keyed on client IP) -----------------------------------
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request.headers.get("x-real-ip") ??
-    "unknown";
-
+  const ip = extractClientIp(request);
   const limit = await authLimiter(ip);
 
   if (!limit.success) {

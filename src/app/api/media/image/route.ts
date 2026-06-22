@@ -5,7 +5,7 @@
  *
  * Accepts multipart/form-data with a `file` field.
  * Processing pipeline:
- *   1. Validate MIME type (jpeg/png/gif/webp) and size (≤ 20 MB).
+ *   1. Validate size (≤ 20 MB) and magic bytes (MIME spoofing defence).
  *   2. Process with sharp: resize to max 2000 px wide, convert to WebP, strip EXIF.
  *   3. Upload to MinIO via `uploadFile()`.
  *   4. Return the public URL.
@@ -22,6 +22,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
+import { fileTypeFromBuffer } from "file-type";
 
 import { requireAuth } from "@/lib/auth-helpers";
 import { uploadFile } from "@/lib/storage";
@@ -77,20 +78,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Validate MIME type
-  if (!ALLOWED_MIME_TYPES.has(file.type)) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INVALID_MIME_TYPE",
-          message: "Only jpeg, png, gif, and webp images are allowed.",
-        },
-      },
-      { status: 400 },
-    );
-  }
-
-  // Validate size
+  // Validate size before reading the whole buffer
   if (file.size > MAX_FILE_SIZE_BYTES) {
     return NextResponse.json(
       {
@@ -103,10 +91,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  try {
-    const inputBuffer = Buffer.from(await file.arrayBuffer());
+  // Read buffer and validate via magic bytes (defence against MIME spoofing)
+  const inputBuffer = Buffer.from(await file.arrayBuffer());
+  const detected = await fileTypeFromBuffer(inputBuffer);
 
-    // Process with sharp: resize, convert to WebP, strip EXIF metadata
+  if (!detected || !ALLOWED_MIME_TYPES.has(detected.mime)) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "INVALID_MIME_TYPE",
+          message: "Only jpeg, png, gif, and webp images are allowed.",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  try {
+    // Process with sharp: resize, convert to WebP, strip EXIF metadata.
+    // sharp validates the image format independently of the MIME check above,
+    // providing an additional layer of defence against malformed inputs.
     const processedBuffer = await sharp(inputBuffer)
       .resize({ width: MAX_WIDTH_PX, withoutEnlargement: true })
       .webp({ quality: 85 })

@@ -5,12 +5,12 @@
  * Accepts multipart/form-data with a single `file` field.
  *
  * Constraints:
- *   - Image types only: jpeg, png, webp
+ *   - Image types only: jpeg, png, webp (validated via magic bytes)
  *   - Max 5 MB
  *   - Recommended dimensions: 1200×300 px
  *
- * In development, the file is written to public/hubs/<slug>-banner.<ext>.
- * TODO(Phase 3): Replace local file storage with S3/MinIO upload.
+ * File is stored in S3/MinIO at hubs/<slug>/banner-<uuid>.<ext>.
+ * The Hub.banner field is updated to the S3 public URL.
  *
  * Responses:
  *   200 { bannerUrl: string }
@@ -22,10 +22,10 @@
  *   500 internal error
  */
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile } from "fs/promises";
-import path from "path";
+import { fileTypeFromBuffer } from "file-type";
 
 import { db } from "@/lib/db";
+import { uploadFile } from "@/lib/storage";
 import { uploadLimiter } from "@/lib/rate-limit";
 import { requireAuth } from "@/lib/auth-helpers";
 import logger from "@/lib/logger";
@@ -133,18 +133,6 @@ export async function POST(
     );
   }
 
-  if (!ALLOWED_MIME_TYPES.has(file.type)) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INVALID_FILE_TYPE",
-          message: "Only jpeg, png, and webp images are accepted for banners.",
-        },
-      },
-      { status: 400 },
-    );
-  }
-
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json(
       {
@@ -157,28 +145,52 @@ export async function POST(
     );
   }
 
-  // --- Persist file ---------------------------------------------------------
-  // TODO(Phase 3): Replace local write with S3/MinIO upload via the S3 client.
-  try {
-    const ext = MIME_TO_EXT[file.type] ?? "bin";
-    const filename = `${slug}-banner.${ext}`;
-    const publicPath = `/hubs/${filename}`;
-    const diskPath = path.join(process.cwd(), "public", "hubs", filename);
+  // --- Read buffer and validate via magic bytes (MIME spoofing defence) -----
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const detected = await fileTypeFromBuffer(buffer);
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(diskPath, buffer);
+  if (!detected || !ALLOWED_MIME_TYPES.has(detected.mime)) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "INVALID_FILE_TYPE",
+          message: "Only jpeg, png, and webp images are accepted for banners.",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  if (file.type && file.type !== detected.mime) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "INVALID_FILE_TYPE",
+          message: "File content does not match its declared type.",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  // --- Upload to S3/MinIO --------------------------------------------------
+  try {
+    const ext = MIME_TO_EXT[detected.mime] ?? "bin";
+    const key = `hubs/${slug}/banner-${crypto.randomUUID()}.${ext}`;
+
+    const bannerUrl = await uploadFile(key, buffer, detected.mime, buffer.length);
 
     await db.hub.update({
       where: { id: hub.id },
-      data: { banner: publicPath },
+      data: { banner: bannerUrl },
     });
 
     logger.info(
-      { userId: user.id, hubId: hub.id, bannerUrl: publicPath },
+      { userId: user.id, hubId: hub.id, bannerUrl },
       "hub: banner updated",
     );
 
-    return NextResponse.json({ bannerUrl: publicPath });
+    return NextResponse.json({ bannerUrl });
   } catch (err) {
     logger.error({ err, userId: user.id, hubId: hub.id }, "hub: banner upload failed");
     return NextResponse.json(

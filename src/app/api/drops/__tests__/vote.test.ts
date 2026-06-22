@@ -72,6 +72,8 @@ beforeEach(() => {
   vi.mocked(redis.eval).mockResolvedValue([1, 59] as any)
   vi.mocked(redis.get).mockResolvedValue(null)
   vi.mocked(redis.scan).mockResolvedValue(['0', []] as any)
+  // Default: user exists and is not suspended (requireAuth suspended check)
+  vi.mocked(db.user.findUnique).mockResolvedValue({ suspended: false } as any)
 })
 
 // ---------------------------------------------------------------------------

@@ -5,11 +5,11 @@
  * Accepts multipart/form-data with a single `file` field.
  *
  * Constraints:
- *   - Image types only: jpeg, png, gif, webp
+ *   - Image types only: jpeg, png, gif, webp (validated via magic bytes)
  *   - Max 5 MB
  *
- * In development, the file is written to public/avatars/<userId>.<ext>.
- * TODO(Phase 3): Replace local file storage with S3/MinIO upload.
+ * File is stored in S3/MinIO at avatars/<userId>/<uuid>.<ext>.
+ * The User.avatar field is updated to the public S3 URL.
  *
  * Responses:
  *   200 { avatarUrl: string }
@@ -19,11 +19,11 @@
  *   500 unexpected server error
  */
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile } from "fs/promises";
-import path from "path";
+import { fileTypeFromBuffer } from "file-type";
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { uploadFile } from "@/lib/storage";
 import { uploadLimiter } from "@/lib/rate-limit";
 import logger from "@/lib/logger";
 
@@ -95,19 +95,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // --- Validate MIME type ---------------------------------------------------
-  if (!ALLOWED_MIME_TYPES.has(file.type)) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INVALID_FILE_TYPE",
-          message: "Only jpeg, png, gif, and webp images are accepted.",
-        },
-      },
-      { status: 400 },
-    );
-  }
-
   // --- Validate size --------------------------------------------------------
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json(
@@ -121,27 +108,52 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // --- Persist file ---------------------------------------------------------
-  // TODO(Phase 3): Replace local write with S3/MinIO upload via the S3 client.
+  // --- Read buffer and validate via magic bytes (MIME spoofing defence) -----
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const detected = await fileTypeFromBuffer(buffer);
+
+  if (!detected || !ALLOWED_MIME_TYPES.has(detected.mime)) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "INVALID_FILE_TYPE",
+          message: "Only jpeg, png, gif, and webp images are accepted.",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  // Also reject if the claimed MIME type doesn't match detected type —
+  // defence-in-depth against MIME confusion attacks.
+  if (file.type && file.type !== detected.mime) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "INVALID_FILE_TYPE",
+          message: "File content does not match its declared type.",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  // --- Upload to S3/MinIO --------------------------------------------------
   try {
-    const ext = MIME_TO_EXT[file.type] ?? "bin";
-    // Include a timestamp fragment to bust browser caches after re-uploads.
-    const filename = `${userId}-${Date.now()}.${ext}`;
-    const publicPath = `/avatars/${filename}`;
-    const diskPath = path.join(process.cwd(), "public", "avatars", filename);
+    const ext = MIME_TO_EXT[detected.mime] ?? "bin";
+    const key = `avatars/${userId}/${crypto.randomUUID()}.${ext}`;
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(diskPath, buffer);
+    const avatarUrl = await uploadFile(key, buffer, detected.mime, buffer.length);
 
-    // Update user record
+    // Update user record with the S3 public URL
     await db.user.update({
       where: { id: userId },
-      data: { avatar: publicPath },
+      data: { avatar: avatarUrl },
     });
 
-    logger.info({ userId, avatarUrl: publicPath }, "user: avatar updated");
+    logger.info({ userId, avatarUrl }, "user: avatar updated");
 
-    return NextResponse.json({ avatarUrl: publicPath });
+    return NextResponse.json({ avatarUrl });
   } catch (err) {
     logger.error({ err, userId }, "user: avatar upload failed");
     return NextResponse.json(

@@ -91,11 +91,38 @@ export async function rateLimit(
 // ---------------------------------------------------------------------------
 
 /**
- * Auth limiter: 10 requests per 15 minutes, keyed on IP.
+ * Auth limiter: 10 requests per 15 minutes, keyed on IP or email.
  * Apply to login and registration endpoints.
  */
 export function authLimiter(ip: string): Promise<RateLimitResult> {
   return rateLimit(`auth:${ip}`, 10, 15 * 60);
+}
+
+// ---------------------------------------------------------------------------
+// IP extraction helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the client IP from a Request object.
+ *
+ * Takes the first value from X-Forwarded-For (set by the outermost proxy) or
+ * falls back to X-Real-IP. Returns "unknown" when neither header is present.
+ *
+ * // TODO: In production, configure your reverse proxy to strip and re-set
+ * // X-Forwarded-For so only one trusted value is present. This prevents
+ * // clients from spoofing their IP by injecting their own XFF header.
+ *
+ * @param request  The incoming Web API Request (or NextRequest)
+ */
+export function extractClientIp(request: Request): string {
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) {
+    // Trust only the first value — this is the client IP when the proxy
+    // prepends rather than replaces. A properly configured reverse proxy
+    // strips client-supplied XFF and inserts a single trusted value.
+    return xff.split(",")[0]?.trim() ?? "unknown";
+  }
+  return request.headers.get("x-real-ip") ?? "unknown";
 }
 
 /**

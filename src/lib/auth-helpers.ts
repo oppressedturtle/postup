@@ -51,6 +51,26 @@ export async function requireAuth(): Promise<AuthResult<Session["user"]>> {
     );
   }
 
+  // Secondary suspended check at the API layer — defence in depth alongside
+  // the session callback check. Catches edge cases where a stale session token
+  // is replayed before the session callback has had a chance to destroy it.
+  const dbUser = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { suspended: true },
+  });
+
+  if (!dbUser || dbUser.suspended) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "SUSPENDED",
+          message: "Your account has been suspended.",
+        },
+      },
+      { status: 403 },
+    );
+  }
+
   return session.user;
 }
 

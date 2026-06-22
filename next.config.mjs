@@ -14,12 +14,18 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=()",
   },
+  // Enforce HTTPS for 2 years, include subdomains, allow preload registration.
+  // Only effective over HTTPS — configure reverse proxy to not set this over HTTP in local dev.
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+  // Disable the legacy XSS auditor (deprecated and can itself be exploited in some browsers).
+  { key: "X-XSS-Protection", value: "0" },
   {
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      // 'unsafe-eval' + 'unsafe-inline' required by Next.js runtime chunks.
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+      // 'unsafe-inline' required by Next.js runtime chunks.
+      // TODO: Replace with nonce-based CSP (see SECURITY.md future work).
+      "script-src 'self' 'unsafe-inline'",
       // Tailwind injects inline styles at runtime.
       "style-src 'self' 'unsafe-inline'",
       // Allow MinIO (local dev) and any HTTPS image CDN; data: for base64 previews.

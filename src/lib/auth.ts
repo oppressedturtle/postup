@@ -20,10 +20,12 @@ import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { headers } from "next/headers";
 
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import logger from "@/lib/logger";
+import { authLimiter } from "@/lib/rate-limit";
 
 // ---------------------------------------------------------------------------
 // Zod schema for credentials login — validated inside authorize()
@@ -50,6 +52,26 @@ const providers: any[] = [
       if (!parsed.success) return null;
 
       const { email, password } = parsed.data;
+
+      // Rate limit by IP (10 attempts per 15 min)
+      const headersList = await headers();
+      const ip =
+        headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+        headersList.get("x-real-ip") ??
+        "unknown";
+      const ipLimit = await authLimiter(ip);
+      if (!ipLimit.success) {
+        logger.warn({ ip }, "auth: login rate limited by IP");
+        return null;
+      }
+
+      // Secondary rate limit per email (10 attempts per 15 min) — prevents
+      // account targeting regardless of IP rotation.
+      const emailLimit = await authLimiter(`login:email:${email}`);
+      if (!emailLimit.success) {
+        logger.warn({ email }, "auth: login rate limited by email");
+        return null;
+      }
 
       const user = await db.user.findUnique({ where: { email } });
       if (!user || !user.passwordHash) return null;
@@ -112,15 +134,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // `user` is the raw adapter user object (from the DB)
       const dbUser = await db.user.findUnique({
         where: { id: user.id },
-        select: { id: true, handle: true, role: true, clout: true },
+        select: { id: true, handle: true, role: true, clout: true, suspended: true },
       });
 
-      if (dbUser) {
-        session.user.id = dbUser.id;
-        session.user.handle = dbUser.handle;
-        session.user.role = dbUser.role;
-        session.user.clout = dbUser.clout;
+      // Suspended accounts have their sessions destroyed immediately.
+      if (!dbUser || dbUser.suspended) {
+        return null as unknown as typeof session;
       }
+
+      session.user.id = dbUser.id;
+      session.user.handle = dbUser.handle;
+      session.user.role = dbUser.role;
+      session.user.clout = dbUser.clout;
 
       return session;
     },

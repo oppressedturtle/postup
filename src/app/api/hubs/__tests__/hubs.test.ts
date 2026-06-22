@@ -12,6 +12,7 @@ vi.mock('@/lib/db', () => ({
   db: {
     hub: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn() },
     membership: { create: vi.fn() },
+    user: { findUnique: vi.fn() },
     $transaction: vi.fn(),
   },
 }))
@@ -62,6 +63,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(redis.eval).mockResolvedValue([1, 2] as any)
   vi.mocked(redis.get).mockResolvedValue(null)
+  // Default: user exists and is not suspended (requireAuth suspended check)
+  vi.mocked(db.user.findUnique).mockResolvedValue({ suspended: false } as any)
 })
 
 // ---------------------------------------------------------------------------

@@ -21,12 +21,14 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { fileTypeFromBuffer } from "file-type";
 
 import { requireAuth } from "@/lib/auth-helpers";
 import { uploadFile } from "@/lib/storage";
 import { rateLimit } from "@/lib/rate-limit";
 import logger from "@/lib/logger";
 
+// file-type returns 'video/quicktime' for .mov files
 const ALLOWED_MIME_TYPES = new Map<string, string>([
   ["video/mp4", "mp4"],
   ["video/webm", "webm"],
@@ -75,21 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Validate MIME type
-  const ext = ALLOWED_MIME_TYPES.get(file.type);
-  if (!ext) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INVALID_MIME_TYPE",
-          message: "Only mp4, webm, and mov videos are allowed.",
-        },
-      },
-      { status: 400 },
-    );
-  }
-
-  // Validate size
+  // Validate size before reading the whole buffer
   if (file.size > MAX_FILE_SIZE_BYTES) {
     return NextResponse.json(
       {
@@ -102,17 +90,35 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Read buffer and validate via magic bytes (defence against MIME spoofing).
+  // Video files go directly to S3 without server-side transcoding, so content
+  // verification is the only guard against malicious uploads.
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const detected = await fileTypeFromBuffer(buffer);
+  const ext = detected ? ALLOWED_MIME_TYPES.get(detected.mime) : undefined;
+
+  if (!detected || !ext) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "INVALID_MIME_TYPE",
+          message: "Only mp4, webm, and mov videos are allowed.",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
   try {
-    const buffer = Buffer.from(await file.arrayBuffer());
     const key = `media/${user.id}/${randomUUID()}.${ext}`;
-    const url = await uploadFile(key, buffer, file.type, buffer.byteLength);
+    const url = await uploadFile(key, buffer, detected.mime, buffer.byteLength);
 
     logger.info(
-      { userId: user.id, key, size: buffer.byteLength, mimeType: file.type },
+      { userId: user.id, key, size: buffer.byteLength, mimeType: detected.mime },
       "media: video uploaded",
     );
 
-    return NextResponse.json({ url, mimeType: file.type });
+    return NextResponse.json({ url, mimeType: detected.mime });
   } catch (err) {
     logger.error({ err, userId: user.id }, "media: video upload failed");
     return NextResponse.json(
