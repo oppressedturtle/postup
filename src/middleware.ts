@@ -1,38 +1,39 @@
 /**
- * Auth.js v5 middleware for PostUp.
+ * PostUp middleware — route protection.
  *
- * Protects all routes except the explicit public allow-list below.
- * Unauthenticated requests to protected routes are redirected to /login.
+ * Keeps the middleware edge-compatible by checking for the Auth.js session
+ * cookie directly, rather than importing the full auth config (which pulls in
+ * `pg` → Node.js `crypto`, unavailable in the Edge runtime).
  *
- * Public routes:
- *   /                     — landing page
- *   /login                — sign-in page
- *   /register             — registration page
- *   /u/[handle]           — public user profile
- *   /h/[slug]             — public hub page
- *   /api/auth/*           — Auth.js internal routes (sign-in, callbacks, etc.)
- *   /api/auth/register    — registration API endpoint
- *   /api/hubs (GET)       — hub discovery
- *   /api/hubs/[slug] (GET)— hub detail
- *   /api/drops (GET)      — drop feed
- *   /api/drops/[id] (GET) — drop detail
- *   /api/link-preview     — link preview scraper
- *   /api/votes            — bulk vote state (auth enforced in handler)
- *   /api/stream           — home feed (auth optional; handler degrades gracefully)
- *   /api/users/top        — Clout leaderboard (public)
- *   /api/drops/[id]/replies (GET) — reply list (auth enforced in handler for POST)
- *   /api/replies/[id] (GET)       — reply detail (auth enforced in handler for PATCH/DELETE)
- *   /api/hubs/[slug]/mod-log (GET) — public moderation log
- *   /api/reports (GET)            — warden/overseer scoped in handler
+ * This is an optimistic check: we verify the cookie is present, not that the
+ * session is valid. Actual session validation (including DB lookup for database-
+ * strategy sessions and the suspended-account check) happens in every route
+ * handler via `requireAuth()`.
  *
- * Protected (require auth, enforced at middleware):
- *   /api/admin/*                  — Overseer admin API (role enforced in handler)
- *   /api/reports POST             — report submission (auth enforced in handler)
- *
- * Note: GET-only public API routes are allowed for all HTTP methods at
- * the middleware level; route handlers enforce auth for mutating methods.
+ * Public routes (no session cookie required):
+ *   /                                  — landing / home feed
+ *   /login, /register                  — auth pages
+ *   /u/[handle]                        — public user profile
+ *   /h/[slug]                          — public hub page (hub detail + drop feed)
+ *   /search                            — search results page
+ *   /api/auth/*                        — Auth.js internal routes
+ *   /api/hubs, /api/hubs/[slug]        — GET discovery & detail
+ *   /api/drops, /api/drops/[id]        — GET feed & drop detail
+ *   /api/drops/[id]/replies            — GET reply list
+ *   /api/replies/[id]                  — GET reply detail
+ *   /api/hubs/[slug]/mod-log           — public mod log
+ *   /api/link-preview                  — link preview scraper
+ *   /api/votes                         — bulk vote state
+ *   /api/stream                        — home feed (auth optional in handler)
+ *   /api/users/top                     — Clout leaderboard
+ *   /api/reports                       — GET warden/overseer reports
+ *   /api/search                        — full-text search
+ *   /api/hubs/trending                 — trending hubs
+ *   /api/hubs/recommended              — recommended hubs
+ *   /api/og                            — OG image generation (edge)
+ *   /api/health                        — health check
+ *   /sitemap.xml, /robots.txt          — crawlers
  */
-import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -40,26 +41,27 @@ const PUBLIC_PATHS = [
   /^\/$/, // home
   /^\/login(\/.*)?$/, // login page
   /^\/register(\/.*)?$/, // register page
+  /^\/search(\/.*)?$/, // search results page
   /^\/u\/[^/]+(\/.*)?$/, // /u/<handle>
   /^\/h\/[^/]+(\/.*)?$/, // /h/<slug>
   /^\/api\/auth(\/.*)?$/, // all /api/auth/* (includes register API)
-  /^\/api\/hubs$/, // GET hub discovery (auth enforced in handler for POST)
-  /^\/api\/hubs\/[^/]+$/, // GET hub detail (auth enforced in handler for PATCH/DELETE)
-  /^\/api\/drops$/, // GET drop feed (auth enforced in handler for POST)
-  /^\/api\/drops\/[^/]+$/, // GET drop detail (auth enforced in handler for PATCH/DELETE)
-  /^\/api\/link-preview$/, // link preview scraper (rate-limited in handler)
-  /^\/api\/votes$/, // bulk vote state (auth enforced in handler)
-  /^\/api\/stream$/, // home feed (auth optional in handler)
-  /^\/api\/users\/top$/, // Clout leaderboard (public)
-  /^\/api\/drops\/[^/]+\/replies$/, // GET reply list (auth enforced in handler for POST)
-  /^\/api\/replies\/[^/]+$/, // GET reply detail (auth enforced in handler for PATCH/DELETE)
+  /^\/api\/hubs$/, // GET hub discovery
+  /^\/api\/hubs\/[^/]+$/, // GET hub detail
+  /^\/api\/drops$/, // GET drop feed
+  /^\/api\/drops\/[^/]+$/, // GET drop detail
+  /^\/api\/drops\/[^/]+\/replies$/, // GET reply list
+  /^\/api\/replies\/[^/]+$/, // GET reply detail
   /^\/api\/hubs\/[^/]+\/mod-log$/, // public hub mod log
-  /^\/api\/reports$/, // GET reports (warden/overseer scoped in handler); POST auth enforced in handler
-  /^\/api\/search$/, // full-text search (public; rate-limited in handler)
-  /^\/api\/hubs\/trending$/, // trending hubs (public)
-  /^\/api\/hubs\/recommended$/, // recommended hubs (auth optional in handler)
-  /^\/api\/og$/, // OG image generation (public; edge runtime)
-  /^\/api\/health$/, // health check (Docker + uptime monitors)
+  /^\/api\/link-preview$/, // link preview scraper
+  /^\/api\/votes$/, // bulk vote state
+  /^\/api\/stream$/, // home feed
+  /^\/api\/users\/top$/, // Clout leaderboard
+  /^\/api\/reports$/, // GET reports
+  /^\/api\/search$/, // full-text search
+  /^\/api\/hubs\/trending$/, // trending hubs
+  /^\/api\/hubs\/recommended$/, // recommended hubs
+  /^\/api\/og$/, // OG images
+  /^\/api\/health$/, // health check
   /^\/sitemap\.xml$/, // sitemap
   /^\/robots\.txt$/, // robots.txt
 ];
@@ -68,32 +70,35 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((pattern) => pattern.test(pathname));
 }
 
-export default auth(function middleware(request: NextRequest & { auth: unknown }) {
+// Auth.js v5 session cookie names (plain HTTP dev / HTTPS prod).
+const SESSION_COOKIE_NAMES = [
+  "authjs.session-token",
+  "__Secure-authjs.session-token",
+];
+
+function hasSessionCookie(request: NextRequest): boolean {
+  return SESSION_COOKIE_NAMES.some((name) => !!request.cookies.get(name)?.value);
+}
+
+export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
 
-  // Allow public paths unconditionally
   if (isPublicPath(pathname)) {
     return NextResponse.next();
   }
 
-  // For protected paths, check session
-  // `request.auth` is populated by Auth.js when wrapping with `auth()`
-  const session = (request as unknown as { auth: { user?: unknown } | null }).auth;
-  if (!session?.user) {
+  // Cookie presence is an optimistic gate. Route handlers call requireAuth()
+  // which performs the actual DB session validation + suspended check.
+  if (!hasSessionCookie(request)) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", request.url);
     return NextResponse.redirect(loginUrl);
   }
 
   return NextResponse.next();
-});
+}
 
 export const config = {
-  /*
-   * Match all paths except:
-   *   - Next.js internals (_next/static, _next/image, favicon.ico)
-   *   - Static files in /public (images, fonts, etc.)
-   */
   matcher: [
     "/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)).*)",
   ],
