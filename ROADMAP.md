@@ -72,7 +72,14 @@ Each roadmap item is a self-contained increment the coder agent completes in one
 - [x] SEO: SSR metadata, Open Graph tags for drops/hubs, sitemap
 
 ## Phase 8 — Hardening & Tests
-- [x] Server/API tests (Vitest) for auth, hubs, drops, voting, moderation — >70% on core
+- [ ] Server/API tests (Vitest) for auth, hubs, drops, voting, moderation — >70% on core
+  <!-- CI RED: tests pass but `test:coverage` fails the 70% GLOBAL gate. The vitest gate
+       measures coverage across ALL ~42 API route handlers + ALL components, while this item
+       only promises ">70% on core". That mismatch is the open decision: (a) keep grinding
+       real tests toward global 70%, or (b) re-scope the coverage `include` to the core
+       (lib + critical handlers) to match this item's "on core" wording. DECISION PENDING.
+       Progress 2026-06-22: added real unit tests for core IO-adapter modules check-ban,
+       mod-log, notifications (0% -> covered); suite now 195 passing. -->
 - [x] Component tests (Testing Library) for key flows
 - [x] E2E (Playwright): signup → create hub → post drop → boost → reply → moderate
 - [x] GitHub Actions CI: lint, typecheck, test, build, prisma validate on every push/PR
