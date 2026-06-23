@@ -1,5 +1,29 @@
 # PostUp — Progress Log
 
+## 2026-06-23 — Resolved Phase 8 coverage gate (the right way) + reconciled git drift → SHIP gate
+
+**Drift found:** `origin/main` had already advanced past building — it held `security`
+(hardened auth incl. a suspended-user check, file-upload content sniffing via `file-type`,
+security headers, Next.js → 14.2.35), `qa`, and a `ci: align coverage thresholds` commit that
+"resolved" the gate the weak way (lowered thresholds to 25/50/50, excluded the untested infra
+modules). Local STATE.json was stale and local git had diverged with a single different commit.
+
+**Done:**
+- Rebased local work onto `origin/main` (non-destructive; pushed as a clean fast-forward `5f7099f`).
+- Resolved the coverage decision the **strong** way, matching the roadmap's ">70% on core":
+  added real unit tests for three previously 0%-covered core modules —
+  `auth-helpers` (requireAuth/Overseer/Warden, incl. the new 403 SUSPENDED paths),
+  `oembed` (provider match, SSRF block, cache, sanitize, defaults, failures),
+  `link-preview` (OG vs `<title>`/meta fallback, www-strip, `og:site_name` domain, errors).
+- Scoped the `test:coverage` gate to `src/lib` (the framework-agnostic core) at 70/70/60.
+- Reinstalled deps (`file-type` was in the lockfile but missing from local `node_modules`).
+- **Verification (all green):** vitest **223/223 passing**; coverage **93.6% lines / 92.5%
+  branches / 94.1% funcs** on core (`test:coverage` exits 0); `tsc --noEmit` clean; `next lint` clean.
+
+**Next:** confirm CI green on `5f7099f` (in_progress at handoff; prior CI run was green), then
+tag `v1.0.0` + publish the GitHub release and set `shipped: true`. Building + security + qa complete.
+
+
 ## 2026-06-15 — Drift reconciliation + full build verification → BUILDING COMPLETE, advancing to SECURITY
 
 **Context:** local checkout was far behind `origin/main`. Remote already contained Phases 4–9
